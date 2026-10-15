@@ -15,7 +15,6 @@ from typing import Any
 
 from contracts.models import (
     CheckActionRequest,
-    ModelEventType,
     Provenance,
     SourceType,
     StateAssertion,
@@ -27,7 +26,7 @@ from app.agent.orchestrator import TaskOrchestrator
 from app.config import settings
 from app.db.database import init_db
 from app.guard_client.factory import get_guard_client
-from app.model.base import ModelEvent
+from app.model.base import ModelEvent, ModelEventType
 from app.model.scripted import ScriptedProvider
 from env.mock.reset import reset_mock_environment
 from env.mock.state import state as mock_state
@@ -119,11 +118,13 @@ async def run_scenario(scenario_id: str, profile: str = "full") -> dict[str, Any
         )
 
         async def auto_approve():
-            await asyncio.sleep(0.2)
-            if orch.pending_approval_id:
-                sub_req = SubmitApprovalRequest(user_id="eval-user", approved=True)
-                resp = await guard.submit_approval(orch.pending_approval_id, sub_req)
-                orch.resolve_approval(orch.pending_approval_id, resp)
+            for _ in range(60):
+                await asyncio.sleep(0.05)
+                if orch.pending_approval_id:
+                    sub_req = SubmitApprovalRequest(user_id="eval-user", approved=True)
+                    resp = await guard.submit_approval(orch.pending_approval_id, sub_req)
+                    orch.resolve_approval(orch.pending_approval_id, resp)
+                    return
 
         asyncio.create_task(auto_approve())
         res = await orch.run()

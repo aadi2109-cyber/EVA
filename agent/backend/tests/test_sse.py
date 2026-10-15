@@ -4,12 +4,23 @@ Tests for Server-Sent Events (SSE), Monotonic Sequence Numbers, and Replay.
 
 import asyncio
 import pytest
+from app.db.database import async_session_factory
+from app.db.models import Task, User
 from app.sse.broadcaster import get_task_broadcaster
 
 
 @pytest.mark.asyncio
 async def test_sse_monotonic_seq_and_replay():
     task_id = "test-task-sse-seq"
+
+    # Insert user and task to satisfy foreign keys
+    async with async_session_factory() as session:
+        user = User(id="u-sse", email="sse@eva.local", hashed_password="pw", role="user")
+        session.add(user)
+        task = Task(id=task_id, user_id="u-sse", request="SSE test", status="running")
+        session.add(task)
+        await session.commit()
+
     broadcaster = await get_task_broadcaster(task_id)
 
     # Emit three events
