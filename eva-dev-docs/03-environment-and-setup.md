@@ -14,8 +14,8 @@ The human supplies the API key and model name. Never hard-code them.
 
 ```
 OLLAMA_BASE_URL=https://ollama.com        # cloud endpoint; use http://localhost:11434 for a local Ollama
-OLLAMA_API_KEY=<provided by the human>     # sent as: Authorization: Bearer <key>
-OLLAMA_MODEL=<provided by the human>       # must support tool calling
+OLLAMA_API_KEY=3f1ec5828c604a0e8d171f9350d040f2.YQ4kXuO-aOR85Rwb3phAxl78     # sent as: Authorization: Bearer <key>
+OLLAMA_MODEL=openai/gpt-oss:20b       # must support tool calling
 ```
 
 BE implements `OllamaProvider` against `POST {OLLAMA_BASE_URL}/api/chat` with `stream=true` and `tools=[...]`. **Verify the exact request/response shape against the current Ollama API docs at build time** (this pack does not assume details beyond: chat endpoint, bearer auth, tool calling support). If the supplied model does not return tool calls reliably, record a decision and fall back to a JSON-mode "tool call as JSON" prompt format behind the same `ModelProvider` interface.
