@@ -1,0 +1,4 @@
+vendor,invoice_id,amount,due_date
+Acme Corp,1042,1500.00,2026-10-24
+CloudServices,2049,450.00,2026-10-24
+SupplyHub,8831,128.50,2026-10-15

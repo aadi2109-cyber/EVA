@@ -10,9 +10,17 @@ Contract version: 0.1.0 · Last human merge: <time>
 
 ## BE
 - Done:
+  - Role started on branch `role/backend`.
+  - Verified Python environment, installed dependencies (`pydantic-settings`, `structlog`, `argon2-cffi`, `pytest`, `pytest-asyncio`, `pyyaml`, `prometheus-client`).
+  - Verified Gate G0 `contracts/` and `StubGuard` integration.
 - In progress:
-- Blocked / needs:
-- Next:
+  - Scaffolding `env/` (docker-compose, .env.example, mock fixtures: mailbox.json, workspace, web, state.py, reset.py).
+  - Building `agent/backend` app skeleton, configuration, auth, DB models (SQLite WAL).
+  - Building tool registry (Gmail real/mock, sandboxed files, web, messages).
+  - Building model providers (ScriptedProvider + OllamaProvider) and GuardClient (InProcess + HTTP).
+  - Implementing Orchestrator loop with strict provenance, guard checks, and SSE replay.
+- Blocked / needs: None. (OAuth credentials optional; running GMAIL_MODE=mock).
+- Next: Complete Gate G1 milestones (full orchestrator loop on StubGuard + ScriptedProvider + SSE).
 
 ## SEC-1
 - Done:
