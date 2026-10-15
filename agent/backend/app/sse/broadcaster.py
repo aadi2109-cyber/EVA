@@ -79,6 +79,7 @@ class TaskSSEBroadcaster:
         self._subscribers.append(queue)
 
         try:
+            terminal_replayed = False
             # 1. Replay past events from DB if requested
             if last_event_id is not None and last_event_id >= 0:
                 async with async_session_factory() as session:
@@ -100,6 +101,16 @@ class TaskSSEBroadcaster:
                             },
                             event_id=str(pe.seq),
                         )
+                        if pe.event_type in (
+                            SSEEventType.TASK_COMPLETED.value,
+                            SSEEventType.TASK_FAILED.value,
+                            SSEEventType.TASK_HELD.value,
+                            SSEEventType.TASK_CANCELLED.value,
+                        ):
+                            terminal_replayed = True
+
+            if terminal_replayed:
+                return
 
             # 2. Stream live events
             while True:
