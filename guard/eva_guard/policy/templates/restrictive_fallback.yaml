@@ -1,0 +1,21 @@
+template_id: restrictive_fallback
+description: Emergency fallback policy restricting all side effects and allowing minimal safe reads
+allowed_operations:
+  - gmail.search
+  - gmail.read
+  - files.list
+  - files.read
+  - messages.history
+allowed_data_scope: []
+allowed_destinations: []
+prohibited_side_effects:
+  - gmail.send
+  - gmail.draft
+  - files.write
+  - messages.send
+  - web.fetch
+approval_required_for: []
+minimum_detector_posture: tier1_ok_readonly
+failure_mode: fail_closed
+max_steps: 6
+origin: restrictive_fallback

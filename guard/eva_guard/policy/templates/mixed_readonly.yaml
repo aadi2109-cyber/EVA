@@ -1,0 +1,25 @@
+template_id: mixed_readonly
+description: General read-only task spanning mailbox, files, web, and messages
+allowed_operations:
+  - gmail.search
+  - gmail.read
+  - files.list
+  - files.read
+  - files.search
+  - web.search
+  - web.fetch
+  - messages.history
+allowed_data_scope: []
+allowed_destinations:
+  - "https://*"
+  - "http://*"
+prohibited_side_effects:
+  - gmail.send
+  - gmail.draft
+  - files.write
+  - messages.send
+approval_required_for: []
+minimum_detector_posture: tier1_ok_readonly
+failure_mode: fail_closed
+max_steps: 12
+origin: template

@@ -1,1 +1,8 @@
-"""Task Policy Builder module (SEC-2)"""
+"""
+Task Policy Builder module.
+Owner: SEC-2 (Authority-side Security)
+"""
+
+from .builder import TaskPolicyBuilder, extract_destinations, classify_intent
+
+__all__ = ["TaskPolicyBuilder", "extract_destinations", "classify_intent"]

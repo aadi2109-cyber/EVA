@@ -26,6 +26,13 @@ from contracts.models import (
     ReasonCode,
 )
 
+from .policy import TaskPolicyBuilder
+from .gateway import PolicyGateway
+from .align import AlignClient
+from .approvals import ApprovalsEngine
+from .verify import StateVerifier
+from .audit import AuditLogger
+
 logger = logging.getLogger("eva_guard")
 
 
@@ -39,59 +46,22 @@ class Guard:
         self.contract_version = CONTRACT_VERSION
         self.db_url = db_url
 
-        # Submodules (built by SEC-2, det by SEC-1)
-        self._policy_builder: Any = None
-        self._gateway: Any = None
-        self._align: Any = None
-        self._approvals: Any = None
-        self._verifier: Any = None
-        self._audit: Any = None
+        # Initialise core authority-side modules
+        self._audit = AuditLogger(db_url=self.db_url)
+        self._policy_builder = TaskPolicyBuilder()
+        self._gateway = PolicyGateway()
+        self._align = AlignClient()
+        self._approvals = ApprovalsEngine()
+        self._verifier = StateVerifier(audit_logger=self._audit)
+
+        # In-memory store of active task policies & original requests
+        self._policies: dict[str, tuple[TaskPolicy, str]] = {}
+
+        # SEC-1's DetPipeline placeholder / dynamic import
         self._det_pipeline: Any = None
+        self._init_det_pipeline()
 
-        self._init_submodules()
-
-    def _init_submodules(self) -> None:
-        """
-        Dynamically initializes submodules if implemented,
-        falling back gracefully to modular interfaces.
-        """
-        try:
-            from .policy import TaskPolicyBuilder
-            self._policy_builder = TaskPolicyBuilder()
-        except (ImportError, AttributeError):
-            self._policy_builder = None
-
-        try:
-            from .gateway import PolicyGateway
-            self._gateway = PolicyGateway()
-        except (ImportError, AttributeError):
-            self._gateway = None
-
-        try:
-            from .align import AlignClient
-            self._align = AlignClient()
-        except (ImportError, AttributeError):
-            self._align = None
-
-        try:
-            from .approvals import ApprovalsEngine
-            self._approvals = ApprovalsEngine()
-        except (ImportError, AttributeError):
-            self._approvals = None
-
-        try:
-            from .verify import StateVerifier
-            self._verifier = StateVerifier()
-        except (ImportError, AttributeError):
-            self._verifier = None
-
-        try:
-            from .audit import AuditLogger
-            self._audit = AuditLogger(db_url=self.db_url)
-        except (ImportError, AttributeError):
-            self._audit = None
-
-        # SEC-1's DetPipeline
+    def _init_det_pipeline(self) -> None:
         try:
             from .det.pipeline import DetPipeline
             self._det_pipeline = DetPipeline()
@@ -103,54 +73,139 @@ class Guard:
         Builds a sealed TaskPolicy strictly from the user's initial request.
         External retrieved content is NEVER passed into this call.
         """
-        if self._policy_builder is not None:
-            return self._policy_builder.build(req)
+        policy = self._policy_builder.build(req)
+        self._policies[req.task_id] = (policy, req.user_request)
 
-        # Fallback to stub behavior if policy builder is not yet wired
-        from .stub import StubGuard
-        return StubGuard().build_task_policy(req)
+        # Audit policy build event
+        try:
+            self._audit.log_event(
+                task_id=req.task_id,
+                event_type="policy.built",
+                actor=f"user:{req.user_id}",
+                payload={
+                    "allowed_operations": policy.allowed_operations,
+                    "allowed_destinations": policy.allowed_destinations,
+                    "prohibited_side_effects": policy.prohibited_side_effects,
+                    "approval_required_for": policy.approval_required_for,
+                    "origin": policy.origin,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Audit failure during policy build: {e}")
+
+        return policy
 
     def scan_tool_result(self, req: ScanRequest) -> ScanResponse:
         """
         Delegates content scanning to SEC-1's DetPipeline.
-        If DetPipeline is unavailable, uses safe pass-through/stub behavior.
+        If DetPipeline is unavailable, uses safe fallback scanner.
         """
-        if self._det_pipeline is not None:
-            return self._det_pipeline.scan(req)
+        if self._det_pipeline is not None and hasattr(self._det_pipeline, "scan"):
+            resp = self._det_pipeline.scan(req)
+        else:
+            from .stub import StubGuard
+            resp = StubGuard().scan_tool_result(req)
 
-        from .stub import StubGuard
-        return StubGuard().scan_tool_result(req)
+        # Audit scan event
+        try:
+            self._audit.log_event(
+                task_id=req.task_id,
+                event_type="det.scan",
+                actor=f"tool:{req.tool}",
+                payload={
+                    "call_id": req.call_id,
+                    "tool": req.tool,
+                    "disposition": resp.disposition,
+                    "det_summary": resp.det_summary.model_dump(),
+                    "tier2_available": resp.tier2_available,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Audit failure during scan: {e}")
+
+        return resp
 
     def check_action(self, req: CheckActionRequest) -> CheckActionResponse:
         """
         Evaluates a proposed action against the deterministic gateway rules.
-        Deny by default.
+        Deny by default. Fail-safe audit.
         """
-        if self._gateway is not None:
-            return self._gateway.check(req, self._approvals, self._align, self._audit)
+        tier2_available = True
+        if self._det_pipeline is not None and hasattr(self._det_pipeline, "is_tier2_available"):
+            tier2_available = self._det_pipeline.is_tier2_available()
 
-        from .stub import StubGuard
-        return StubGuard().check_action(req)
+        policy_tuple = self._policies.get(req.task_id)
+        policy = policy_tuple[0] if policy_tuple else None
+        original_request = policy_tuple[1] if policy_tuple else None
+
+        # Check action through deterministic gateway
+        resp = self._gateway.check(
+            req=req,
+            policy=policy,
+            tier2_available=tier2_available,
+            approvals_engine=self._approvals,
+            align_client=self._align,
+            original_request=original_request,
+        )
+
+        # Fail-safe audit write: if audit logging fails, DENY the action!
+        try:
+            self._audit.log_event(
+                task_id=req.task_id,
+                event_type="gateway.decision",
+                actor=f"tool:{req.tool}",
+                payload={
+                    "call_id": req.call_id,
+                    "tool": req.tool,
+                    "decision": resp.decision,
+                    "reasons": [r.value for r in resp.reasons],
+                    "read_only": req.read_only,
+                    "approval_id": req.approval_id,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Fail-safe audit triggered: audit log failed ({e}), denying action")
+            return CheckActionResponse(
+                decision="DENY",
+                reasons=[ReasonCode.GUARD_ERROR],
+                reason_text="Fail-safe audit error: security event could not be logged",
+                align={"verdict": "unavailable", "score": None},
+                approval=None,
+                contract_version=CONTRACT_VERSION,
+                event_id="err-audit-failsafe",
+            )
+
+        return resp
 
     def submit_approval(self, approval_id: str, req: SubmitApprovalRequest) -> SubmitApprovalResponse:
         """
         Submits human approval decision bound to the exact action hash.
         """
-        if self._approvals is not None:
-            return self._approvals.submit(approval_id, req)
+        resp = self._approvals.submit(approval_id, req)
 
-        from .stub import StubGuard
-        return StubGuard().submit_approval(approval_id, req)
+        # Audit approval resolution
+        try:
+            self._audit.log_event(
+                task_id=approval_id,
+                event_type="approval.resolved",
+                actor=f"user:{req.user_id}",
+                payload={
+                    "approval_id": approval_id,
+                    "status": resp.status,
+                    "approved": req.approved,
+                    "edited": req.edited_args is not None,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Audit failure during submit approval: {e}")
+
+        return resp
 
     def verify_state(self, req: VerifyStateRequest) -> VerifyStateResponse:
         """
         Runs post-state assertions independently against observed state.
         """
-        if self._verifier is not None:
-            return self._verifier.verify(req)
-
-        from .stub import StubGuard
-        return StubGuard().verify_state(req)
+        return self._verifier.verify(req)
 
     def health(self) -> Health:
         """
@@ -158,7 +213,7 @@ class Guard:
         """
         tier2_available = True
         t3_available = True
-        align_available = True
+        align_available = self._align.is_available()
 
         if self._det_pipeline is not None and hasattr(self._det_pipeline, "is_tier2_available"):
             tier2_available = self._det_pipeline.is_tier2_available()
@@ -172,6 +227,6 @@ class Guard:
             align_available=align_available,
             config_version=1,
             contract_version=self.contract_version,
-            kill_switch=KillSwitchState(all_write_tools=False, tools=[], templates=[]),
+            kill_switch=self._gateway.kill_switch,
             metrics={"escalation_rate": 0.0, "p50_ms": 1.0, "p95_ms": 2.5},
         )

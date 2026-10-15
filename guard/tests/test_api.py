@@ -50,6 +50,7 @@ def test_guard_facade_scan():
 
 def test_guard_facade_check_action():
     guard = Guard()
+
     req = CheckActionRequest(
         task_id="t-1",
         call_id="c-1",
@@ -57,5 +58,24 @@ def test_guard_facade_check_action():
         args={"query": "test"},
         read_only=True,
     )
-    resp = guard.check_action(req)
-    assert resp.decision == "ALLOW"
+
+    # 1. Without policy built, deterministic gateway denies per Rule 3 (POLICY_EXPIRED)
+    denied_resp = guard.check_action(req)
+    assert denied_resp.decision == "DENY"
+    assert "POLICY_EXPIRED" in [r.value for r in denied_resp.reasons]
+
+    # 2. Build task policy for t-1
+    guard.build_task_policy(
+        BuildPolicyRequest(
+            task_id="t-1",
+            user_id="u-1",
+            user_role="user",
+            user_request="Search my emails for receipts",
+            available_tools=["gmail.search", "gmail.read"],
+        )
+    )
+
+    # 3. Now allowed
+    allowed_resp = guard.check_action(req)
+    assert allowed_resp.decision == "ALLOW"
+

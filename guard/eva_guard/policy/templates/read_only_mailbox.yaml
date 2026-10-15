@@ -1,0 +1,17 @@
+template_id: read_only_mailbox
+description: Read and search mailbox without creating drafts or sending emails
+allowed_operations:
+  - gmail.search
+  - gmail.read
+allowed_data_scope: []
+allowed_destinations: []
+prohibited_side_effects:
+  - gmail.send
+  - gmail.draft
+  - files.write
+  - messages.send
+approval_required_for: []
+minimum_detector_posture: tier1_ok_readonly
+failure_mode: fail_closed
+max_steps: 8
+origin: template
