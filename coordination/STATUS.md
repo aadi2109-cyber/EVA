@@ -17,8 +17,8 @@ Contract version: 0.1.0 · Last human merge: H0.75
   - Mocks kept behind `VITE_USE_MOCK_STREAM=true`.
 - In progress: -
 - Blocked / needs: see `coordination/requests/fe-to-be-live-demo.md` (scripted-provider switch for demos, tool.output field name, plan.step status, approval expiry).
-  - Tooling: `npm test` (Vitest + Testing Library, 27 tests: SSE parser/reconnect, API client, StepList, ToolCallCard, ApprovalModal, mock scenarios), `npm run lint` (ESLint 9, zero warnings, bans `dangerouslySetInnerHTML`, enforces hooks rules), `npm run typecheck`.
-- Next: S7 live, Admin review queue/config proposals, Playwright smoke tests, state polish.
+  - Tooling: `npm test` (Vitest + Testing Library, 27 tests: SSE parser/reconnect, API client, StepList, ToolCallCard, ApprovalModal, mock scenarios), `npm run lint` (ESLint 9, zero warnings, bans `dangerouslySetInnerHTML`, enforces hooks rules), `npm run typecheck`, `npm run test:e2e` (Playwright, 4 smoke tests: login, S1, S4 approval, S7 degraded banner; API stubbed via page.route, no backend needed).
+- Next: S7 live, Admin review queue/config proposals, state polish.
 
 ## BE
 - Done:
