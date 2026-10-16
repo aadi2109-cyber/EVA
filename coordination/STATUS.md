@@ -1,12 +1,21 @@
 # EVA — STATUS (each agent edits only its own section)
 
-Contract version: 0.1.0 · Last human merge: <time>
+Contract version: 0.1.0 · Last human merge: H0.75
 
 ## FE
 - Done:
-- In progress:
-- Blocked / needs:
-- Next:
+  - Downloaded Stitch reference assets (`stitch_screen.png`, `stitch_screen.html`) from Project ID: 14542611907438946012, Screen ID: 9258055bfecd4f938a90b93a442fc1ab.
+  - Authored comprehensive `agent/frontend/UI_NOTES.md` documenting visual language, obsidian dark theme (`#121316`), neon lime accents (`#c8f322`), typography, and full component inventory.
+  - Implemented typed API client (`src/api/client.ts`) and complete TypeScript contract types (`src/api/types.ts`) matching `02-contracts-v0.md`.
+  - Implemented resilient SSE client (`src/api/sse.ts`) with monotonic `seq` ordering and auto-reconnect.
+  - Implemented mock streams and scenario runners (`src/mocks/mockStream.ts`) for S1 (prompt injection sanitized), S2 (hijacked model send denied), S4 (exact-action approval modal flow), and S7 (Tier 2 degraded fail-closed mode).
+  - Built persistent Header navigation matching Stitch reference (`src/components/Header.tsx`).
+  - Built full Live Security Trace Panel (`src/components/LiveTracePanel.tsx`) with filter tabs, color-coded accessible badges (PASS, SANITIZED, QUARANTINED, HELD, ALLOW, REQUIRE_APPROVAL, DENY, guard.error), and right-hand Audit Inspector card with zero-raw-text guarantees.
+  - Built Exact-Action Approval Modal (`src/components/ApprovalModal.tsx`), Collapsible Tool Call Cards (`src/components/ToolCallCard.tsx`), Plan Steps list (`src/components/StepList.tsx`), and Task Outcome summary (`src/components/TaskSummaryLine.tsx`).
+  - Built all application pages: Task Workspace (`TaskWorkspace.tsx`), Settings & Security Telemetry (`SettingsTrace.tsx`), Connectors (`Connectors.tsx`), Sandboxed Files (`FilesViewer.tsx`), Task History (`History.tsx`), and Admin Enclave (`Admin.tsx`).
+- In progress: Completing package installation and local build validation.
+- Blocked / needs: None. Fully functional against contract v0 and mock SSE stream.
+- Next: Integration CP-A when backend ready.
 
 ## BE
 - Done:
@@ -53,7 +62,6 @@ Contract version: 0.1.0 · Last human merge: <time>
 - In progress: Evaluation scenario runner (`guard/eval/runner.py`) for S1-S14 and CP-A integration readiness.
 - Blocked / needs: Waiting for BE to wire real Guard facade / SEC-1 to wire `DetPipeline` at CP-A (H4).
 - Next: Baseline/Basic/Full scenario runner, degradation drill fixtures.
-
 
 ## Gates
 - [x] G0 contracts frozen + StubGuard (H0.75)
