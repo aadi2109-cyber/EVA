@@ -57,6 +57,8 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Corpus re-split (stratified by family, grouped by base text; old test split held one family only). Request `requests/sec2-to-sec1-01.md` sent.
   - S9 now uses a gray-band + timing-out T3 fixture when SEC-1's DetPipeline is present. Verified in a scratch merge of `role/sec1`: 14/14 Full expectations (S1, S9, S11 pass), 72 tests passing.
   - Merged `role/sec1` into `role/sec2`; re-ran everything: 72 tests pass; S1-S14 Full 14/14 (Baseline 9 unauthorized side effects, Basic 2, Full 0); drills 10/10; `eval/DET_METRICS.md` added (via Guard facade: test recall 21%, precision 100%, FP 0%; dev recall 22%, precision 64%).
+  - Service: request-size limit (413, `GUARD_MAX_BODY_BYTES`, default 4 MB). HTTP end-to-end tests (`tests/test_service_e2e.py`): approval single use + tamper + replay, hijacked send, 401s, 413, no stack-trace leakage.
+  - Hypothesis property tests (`tests/test_gateway_properties.py`): prohibited write tools never ALLOW/approvable, unknown tool/task always DENY, ALIGN never upgrades a decision. Mutation-checked (disabling rule 4 makes them fail). 84 tests passing.
 - In progress (was: waiting on SEC-1 DetPipeline) (scan checks S1/S9/S11, sanitization P/R, T2 latency); CP-A integration readiness.
 - Blocked / needs: Waiting for BE to wire real Guard facade / SEC-1 to wire `DetPipeline` at CP-A (H4).
 - Next: Baseline/Basic/Full scenario runner, degradation drill fixtures.
