@@ -1,0 +1,19 @@
+template_id: web_research
+description: Perform web search and fetch external articles without side effects
+allowed_operations:
+  - web.search
+  - web.fetch
+allowed_data_scope: []
+allowed_destinations:
+  - "https://*"
+  - "http://*"
+prohibited_side_effects:
+  - gmail.send
+  - gmail.draft
+  - files.write
+  - messages.send
+approval_required_for: []
+minimum_detector_posture: tier1_ok_readonly
+failure_mode: fail_closed
+max_steps: 12
+origin: template

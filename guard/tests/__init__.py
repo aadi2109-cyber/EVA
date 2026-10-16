@@ -1,1 +1,1 @@
-# Tests root
+"""Guard tests package."""

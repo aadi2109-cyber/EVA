@@ -1,0 +1,1677 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EVA Guard API",
+    "description": "Deterministic security gateway, content scanner, and policy engine for EVA Agent",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/policy": {
+      "post": {
+        "summary": "Build Task Policy",
+        "operationId": "build_task_policy_v1_policy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPolicy"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scan": {
+      "post": {
+        "summary": "Scan Tool Result",
+        "operationId": "scan_tool_result_v1_scan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/check-action": {
+      "post": {
+        "summary": "Check Proposed Action",
+        "operationId": "check_action_v1_check_action_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approvals/{approval_id}": {
+      "post": {
+        "summary": "Submit Approval Decision",
+        "operationId": "submit_approval_v1_approvals__approval_id__post",
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Approval Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitApprovalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/verify-state": {
+      "post": {
+        "summary": "Verify Post-Execution State",
+        "operationId": "verify_state_v1_verify_state_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "summary": "Guard Health and Posture",
+        "operationId": "get_health_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/config": {
+      "get": {
+        "summary": "Get Active Config",
+        "operationId": "get_config_admin_v1_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/config/proposals": {
+      "post": {
+        "summary": "Propose Config Change",
+        "operationId": "propose_config_admin_v1_config_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigProposalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/config/proposals/{proposal_id}/approve": {
+      "post": {
+        "summary": "Approve Config Change (Four-Eyes)",
+        "operationId": "approve_config_proposal_admin_v1_config_proposals__proposal_id__approve_post",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigProposalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/templates": {
+      "get": {
+        "summary": "List Policy Templates",
+        "operationId": "list_templates_admin_v1_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/review-queue": {
+      "get": {
+        "summary": "List Quarantined/Held Review Items",
+        "operationId": "list_review_queue_admin_v1_review_queue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/review-queue/{id}/decision": {
+      "post": {
+        "summary": "Submit Human Review Decision",
+        "operationId": "submit_review_decision_admin_v1_review_queue__id__decision_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/audit": {
+      "get": {
+        "summary": "Query Audit Log",
+        "operationId": "query_audit_admin_v1_audit_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEvent"
+                  },
+                  "type": "array",
+                  "title": "Response Query Audit Admin V1 Audit Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/audit/verify": {
+      "get": {
+        "summary": "Verify Audit Hash Chain Integrity",
+        "operationId": "verify_audit_chain_admin_v1_audit_verify_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerifyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/audit/export": {
+      "get": {
+        "summary": "Export Audit Log",
+        "operationId": "export_audit_admin_v1_audit_export_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/kill-switch": {
+      "post": {
+        "summary": "Set Kill Switch",
+        "operationId": "set_kill_switch_admin_v1_kill_switch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KillSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/v1/health": {
+      "get": {
+        "summary": "Admin Health Check",
+        "operationId": "admin_health_admin_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApprovalRequest": {
+        "properties": {
+          "approval_id": {
+            "type": "string",
+            "title": "Approval Id"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "exact_action": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Exact Action"
+          },
+          "arg_sources": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Arg Sources"
+          },
+          "action_hash": {
+            "type": "string",
+            "title": "Action Hash"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approval_id",
+          "task_id",
+          "exact_action",
+          "action_hash",
+          "expires_at"
+        ],
+        "title": "ApprovalRequest"
+      },
+      "AuditEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "payload_json": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload Json"
+          },
+          "config_version": {
+            "type": "integer",
+            "title": "Config Version"
+          },
+          "model_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Model Versions"
+          },
+          "prev_hash": {
+            "type": "string",
+            "title": "Prev Hash"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "task_id",
+          "type",
+          "actor",
+          "payload_json",
+          "config_version",
+          "prev_hash",
+          "hash"
+        ],
+        "title": "AuditEvent"
+      },
+      "AuditVerifyResponse": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "chain_length": {
+            "type": "integer",
+            "title": "Chain Length"
+          },
+          "tampered_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tampered Event Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "chain_length",
+          "message"
+        ],
+        "title": "AuditVerifyResponse"
+      },
+      "BuildPolicyRequest": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "admin"
+            ],
+            "title": "User Role"
+          },
+          "user_request": {
+            "type": "string",
+            "title": "User Request"
+          },
+          "available_tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Tools"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "user_id",
+          "user_role",
+          "user_request",
+          "available_tools"
+        ],
+        "title": "BuildPolicyRequest"
+      },
+      "CheckActionRequest": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "call_id": {
+            "type": "string",
+            "title": "Call Id"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "args": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Args"
+          },
+          "arg_provenance": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "type": "object",
+            "title": "Arg Provenance"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "call_id",
+          "tool",
+          "read_only"
+        ],
+        "title": "CheckActionRequest"
+      },
+      "CheckActionResponse": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "ALLOW",
+              "REQUIRE_APPROVAL",
+              "DENY"
+            ],
+            "title": "Decision"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonCode"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "reason_text": {
+            "type": "string",
+            "title": "Reason Text"
+          },
+          "align": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Align"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "0.1.0"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "reason_text",
+          "event_id"
+        ],
+        "title": "CheckActionResponse"
+      },
+      "ConfigProposalRequest": {
+        "properties": {
+          "proposed_by": {
+            "type": "string",
+            "title": "Proposed By"
+          },
+          "changes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Changes"
+          },
+          "justification": {
+            "type": "string",
+            "title": "Justification"
+          }
+        },
+        "type": "object",
+        "required": [
+          "proposed_by",
+          "changes",
+          "justification"
+        ],
+        "title": "ConfigProposalRequest"
+      },
+      "ConfigProposalResponse": {
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "title": "Proposal Id"
+          },
+          "proposed_by": {
+            "type": "string",
+            "title": "Proposed By"
+          },
+          "changes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Changes"
+          },
+          "justification": {
+            "type": "string",
+            "title": "Justification"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "proposed_by",
+          "changes",
+          "justification",
+          "status",
+          "created_at"
+        ],
+        "title": "ConfigProposalResponse"
+      },
+      "DetSummary": {
+        "properties": {
+          "t1_signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "T1 Signals"
+          },
+          "t2_max_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T2 Max Score"
+          },
+          "t3_used": {
+            "type": "boolean",
+            "title": "T3 Used",
+            "default": false
+          },
+          "t3_verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "malicious",
+                  "benign",
+                  "uncertain",
+                  "unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T3 Verdict"
+          },
+          "latency_ms": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Latency Ms"
+          }
+        },
+        "type": "object",
+        "title": "DetSummary"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "down"
+            ],
+            "title": "Status"
+          },
+          "tier2_available": {
+            "type": "boolean",
+            "title": "Tier2 Available"
+          },
+          "t3_available": {
+            "type": "boolean",
+            "title": "T3 Available"
+          },
+          "align_available": {
+            "type": "boolean",
+            "title": "Align Available"
+          },
+          "t2_model_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T2 Model Hash"
+          },
+          "config_version": {
+            "type": "integer",
+            "title": "Config Version",
+            "default": 1
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "0.1.0"
+          },
+          "kill_switch": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "$ref": "#/components/schemas/KillSwitchState"
+              }
+            ],
+            "title": "Kill Switch"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Metrics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "tier2_available",
+          "t3_available",
+          "align_available",
+          "kill_switch"
+        ],
+        "title": "Health"
+      },
+      "KillSwitchRequest": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/KillSwitchScope"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "enabled"
+        ],
+        "title": "KillSwitchRequest"
+      },
+      "KillSwitchScope": {
+        "type": "string",
+        "enum": [
+          "tool",
+          "template",
+          "all_write_tools"
+        ],
+        "title": "KillSwitchScope"
+      },
+      "KillSwitchState": {
+        "properties": {
+          "all_write_tools": {
+            "type": "boolean",
+            "title": "All Write Tools",
+            "default": false
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "templates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Templates"
+          }
+        },
+        "type": "object",
+        "title": "KillSwitchState"
+      },
+      "Provenance": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "retrieval_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retrieval Path"
+          },
+          "trust": {
+            "$ref": "#/components/schemas/Trust"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_type",
+          "trust"
+        ],
+        "title": "Provenance"
+      },
+      "ReasonCode": {
+        "type": "string",
+        "enum": [
+          "TOOL_UNKNOWN",
+          "SCHEMA_INVALID",
+          "TOOL_NOT_IN_POLICY",
+          "TOOL_PROHIBITED",
+          "ARG_OUT_OF_SCOPE",
+          "DESTINATION_NOT_ALLOWED",
+          "UNTRUSTED_ARG_PROVENANCE",
+          "POSTURE_DEGRADED",
+          "APPROVAL_REQUIRED",
+          "ALIGN_MISALIGNED",
+          "ALIGN_UNCERTAIN",
+          "KILL_SWITCH",
+          "GUARD_ERROR",
+          "POLICY_EXPIRED",
+          "APPROVAL_MISMATCH",
+          "STEP_BUDGET"
+        ],
+        "title": "ReasonCode"
+      },
+      "ReviewDecisionRequest": {
+        "properties": {
+          "reviewer_id": {
+            "type": "string",
+            "title": "Reviewer Id"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected",
+              "investigate"
+            ],
+            "title": "Decision"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewer_id",
+          "decision",
+          "notes"
+        ],
+        "title": "ReviewDecisionRequest"
+      },
+      "SanitizedField": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "sentences_total": {
+            "type": "integer",
+            "title": "Sentences Total"
+          },
+          "sentences_removed": {
+            "type": "integer",
+            "title": "Sentences Removed"
+          },
+          "quarantined": {
+            "type": "boolean",
+            "title": "Quarantined",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "text",
+          "sentences_total",
+          "sentences_removed"
+        ],
+        "title": "SanitizedField"
+      },
+      "ScanField": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "text",
+          "provenance"
+        ],
+        "title": "ScanField"
+      },
+      "ScanRequest": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "call_id": {
+            "type": "string",
+            "title": "Call Id"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ScanField"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "call_id",
+          "tool",
+          "fields"
+        ],
+        "title": "ScanRequest"
+      },
+      "ScanResponse": {
+        "properties": {
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "sanitized",
+              "quarantined",
+              "held"
+            ],
+            "title": "Disposition"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SanitizedField"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "det_summary": {
+            "$ref": "#/components/schemas/DetSummary"
+          },
+          "tier2_available": {
+            "type": "boolean",
+            "title": "Tier2 Available"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "0.1.0"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "disposition",
+          "det_summary",
+          "tier2_available",
+          "event_id"
+        ],
+        "title": "ScanResponse"
+      },
+      "ScopeRule": {
+        "properties": {
+          "tool_prefix": {
+            "type": "string",
+            "title": "Tool Prefix"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "pattern": {
+            "type": "string",
+            "title": "Pattern"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tool_prefix",
+          "field",
+          "pattern"
+        ],
+        "title": "ScopeRule"
+      },
+      "SourceType": {
+        "type": "string",
+        "enum": [
+          "user_request",
+          "email",
+          "file",
+          "web",
+          "message",
+          "tool_output"
+        ],
+        "title": "SourceType"
+      },
+      "StateAssertion": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "no_new_sent_mail",
+              "file_unchanged",
+              "file_written_with_hash",
+              "draft_created",
+              "no_outbound_http_to",
+              "mock_state_equals"
+            ],
+            "title": "Kind"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "expected": {
+            "title": "Expected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "target"
+        ],
+        "title": "StateAssertion"
+      },
+      "SubmitApprovalRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved"
+          },
+          "edited_args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Args"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "approved"
+        ],
+        "title": "SubmitApprovalRequest"
+      },
+      "SubmitApprovalResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "denied",
+              "re_approval_required",
+              "expired"
+            ],
+            "title": "Status"
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "event_id"
+        ],
+        "title": "SubmitApprovalResponse"
+      },
+      "TaskPolicy": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "allowed_operations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Operations"
+          },
+          "allowed_data_scope": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeRule"
+            },
+            "type": "array",
+            "title": "Allowed Data Scope"
+          },
+          "allowed_destinations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Destinations"
+          },
+          "prohibited_side_effects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prohibited Side Effects"
+          },
+          "approval_required_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Approval Required For"
+          },
+          "minimum_detector_posture": {
+            "type": "string",
+            "enum": [
+              "tier2_required",
+              "tier1_ok_readonly"
+            ],
+            "title": "Minimum Detector Posture",
+            "default": "tier2_required"
+          },
+          "failure_mode": {
+            "type": "string",
+            "enum": [
+              "fail_closed",
+              "tier1_only_warning"
+            ],
+            "title": "Failure Mode",
+            "default": "fail_closed"
+          },
+          "max_steps": {
+            "type": "integer",
+            "title": "Max Steps",
+            "default": 12
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "llm_draft_validated",
+              "template",
+              "restrictive_fallback"
+            ],
+            "title": "Origin",
+            "default": "template"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "user_id",
+          "created_at",
+          "expires_at",
+          "allowed_operations"
+        ],
+        "title": "TaskPolicy"
+      },
+      "Trust": {
+        "type": "string",
+        "enum": [
+          "user",
+          "system",
+          "untrusted"
+        ],
+        "title": "Trust"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerifyStateRequest": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
+          },
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/StateAssertion"
+            },
+            "type": "array",
+            "title": "Assertions"
+          },
+          "observed": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Observed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "assertions",
+          "observed"
+        ],
+        "title": "VerifyStateRequest"
+      },
+      "VerifyStateResponse": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "failures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failures"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "event_id"
+        ],
+        "title": "VerifyStateResponse"
+      }
+    }
+  }
+}
