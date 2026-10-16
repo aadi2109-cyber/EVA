@@ -25,6 +25,10 @@ dependencies = [
     # imported by the in-process guard (eva_guard) that the backend loads
     "pyyaml>=6.0.1",
     "prometheus-client>=0.20.0",
+    # Tier-2 injection detector (guard/eva_guard/det/t2.py) loads ONNX models; without these it
+    # silently reports tier2_available=false and the guard goes fail-closed ("posture degraded").
+    "onnxruntime>=1.17.0",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]

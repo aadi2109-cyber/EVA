@@ -28,6 +28,8 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 curl.exe localhost:8000/api/health         # PowerShell's `curl` is an alias; use curl.exe
 ```
+`Posture degraded: Tier-2 detector unavailable` banner / `/api/health` shows `tier2_available:false`: `onnxruntime` (and `numpy`) are not installed in the venv (the Tier-2 loader swallows the ImportError and the guard goes fail-closed, side-effect tools disabled). Fix: `git pull`, then `pip install -e ".[dev]"` again, then restart uvicorn.
+
 `ModuleNotFoundError: greenlet` means an old install (before `greenlet` was a declared dependency): `git pull`, then `pip install -e ".[dev]"` again.
 
 Docker (API and the separately running HTTP guard):
