@@ -60,6 +60,8 @@ class Guard:
 
         # In-memory store of active task policies & original requests
         self._policies: dict[str, tuple[TaskPolicy, str]] = {}
+        self._config = self._load_config()
+        self.apply_config(self._config)
         # A kill switch must survive restarts (never fail open by forgetting it).
         ks = self._store.get_kill_switch()
         if ks is not None:
@@ -77,6 +79,61 @@ class Guard:
             self._det_pipeline = DetPipeline(audit=None, t3=t3)
         except (ImportError, AttributeError):
             self._det_pipeline = None
+
+    DEFAULT_CONFIG: dict[str, Any] = {
+        "version": 1,
+        "minimum_detector_posture": "tier2_required",   # posture given to side-effect task policies
+        "failure_mode": "fail_closed",
+        "block_threshold": 0.85,
+        "t3_enabled": True,
+        "align_enabled": True,
+    }
+    CONFIG_DOMAINS: dict[str, Any] = {
+        "minimum_detector_posture": {"tier2_required", "tier1_ok_readonly", "tier1_only_warning"},
+        "failure_mode": {"fail_closed", "tier1_only_warning"},
+        "block_threshold": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and 0.0 < v <= 1.0,
+        "t3_enabled": lambda v: isinstance(v, bool),
+        "align_enabled": lambda v: isinstance(v, bool),
+    }
+
+    def _load_config(self) -> dict[str, Any]:
+        cfg = self._store.latest_config()
+        if cfg is None:
+            cfg = dict(self.DEFAULT_CONFIG)
+            self._store.put_config_version(1, cfg, "system", None, None)
+        return cfg
+
+    def get_config(self) -> dict[str, Any]:
+        return dict(self._config)
+
+    def validate_config_changes(self, changes: dict[str, Any]) -> None:
+        for k, v in changes.items():
+            dom = self.CONFIG_DOMAINS.get(k)
+            if dom is None:
+                raise ValueError(f"unknown config key {k!r}")
+            ok = dom(v) if callable(dom) else v in dom
+            if not ok:
+                raise ValueError(f"invalid value for {k!r}")
+
+    @staticmethod
+    def is_lowering(old: dict[str, Any], changes: dict[str, Any]) -> bool:
+        """True when a change weakens security posture (all changes still need a second admin; this labels them)."""
+        return (changes.get("minimum_detector_posture", old["minimum_detector_posture"]) != "tier2_required"
+                or changes.get("failure_mode", old["failure_mode"]) != "fail_closed"
+                or changes.get("t3_enabled", old["t3_enabled"]) is False
+                or changes.get("align_enabled", old["align_enabled"]) is False
+                or changes.get("block_threshold", old["block_threshold"]) > old["block_threshold"])
+
+    def apply_config(self, cfg: dict[str, Any]) -> None:
+        self._config = dict(cfg)
+        self._align.enabled = bool(cfg.get("align_enabled", True))
+        self._policy_builder.side_effect_posture = cfg.get("minimum_detector_posture", "tier2_required")
+
+    def commit_config(self, changes: dict[str, Any], changed_by: str, approved_by: str, proposal_id: str) -> dict[str, Any]:
+        new = {**self._config, **changes, "version": self._config["version"] + 1}
+        self._store.put_config_version(new["version"], new, changed_by, approved_by, proposal_id)  # raises => not applied
+        self.apply_config(new)
+        return new
 
     def _load_policy(self, task_id: str) -> tuple[TaskPolicy, str] | None:
         hit = self._policies.get(task_id)

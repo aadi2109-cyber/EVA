@@ -29,20 +29,6 @@ router = APIRouter(prefix="/admin/v1", tags=["Guard Admin"])
 admin_router = router
 
 
-# In-memory admin state (also persisted in SQLite)
-_active_config: dict[str, Any] = {
-    "version": 1,
-    "minimum_detector_posture": "tier2_required",
-    "failure_mode": "fail_closed",
-    "block_threshold": 0.85,
-    "t3_enabled": True,
-    "align_enabled": True,
-}
-
-_proposals: dict[str, dict[str, Any]] = {}
-_review_queue: dict[str, dict[str, Any]] = {}
-
-
 def get_guard_instance():
     # Will be assigned from service main
     from eva_guard.api import Guard
@@ -55,7 +41,12 @@ def get_guard_instance():
 
 @router.get("/config", summary="Get Active Guard Configuration")
 def get_config():
-    return _active_config
+    return get_guard_instance().get_config()
+
+
+@router.get("/config/history", summary="Config Version History")
+def config_history():
+    return get_guard_instance()._store.config_history()
 
 
 @router.post("/config/proposals", response_model=ConfigProposalResponse, summary="Propose Config Change")
@@ -64,6 +55,11 @@ def propose_config_change(req: ConfigProposalRequest):
     Submits a configuration change proposal.
     Sensitive changes (lowering posture floor) strictly require a second admin approval.
     """
+    guard = get_guard_instance()
+    try:
+        guard.validate_config_changes(req.changes)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     prop_id = f"prop-{uuid.uuid4().hex[:10]}"
     now = datetime.now(timezone.utc)
 
@@ -77,9 +73,9 @@ def propose_config_change(req: ConfigProposalRequest):
         "approved_by": None,
         "approved_at": None,
     }
-    _proposals[prop_id] = proposal
+    proposal["lowers_security"] = guard.is_lowering(guard.get_config(), req.changes)
+    guard._store.put_proposal(proposal)
 
-    guard = get_guard_instance()
     try:
         guard._audit.log_event(
             task_id=prop_id,
@@ -99,7 +95,8 @@ def approve_config_proposal(proposal_id: str, approver_id: str = Header(..., ali
     Four-eyes approval requirement:
     The approver MUST be a different admin than the proposer.
     """
-    proposal = _proposals.get(proposal_id)
+    guard = get_guard_instance()
+    proposal = guard._store.get_proposal(proposal_id)
     if not proposal:
         raise HTTPException(status_code=404, detail="Proposal not found")
 
@@ -114,23 +111,20 @@ def approve_config_proposal(proposal_id: str, approver_id: str = Header(..., ali
         )
 
     now = datetime.now(timezone.utc)
+    # Commit the new version first (append-only); only then mark approved. Store failure => 500, nothing applied.
+    new_cfg = guard.commit_config(proposal["changes"], proposal["proposed_by"], approver_id, proposal_id)
     proposal["status"] = "approved"
     proposal["approved_by"] = approver_id
-    proposal["approved_at"] = now
+    proposal["approved_at"] = now.isoformat()
+    guard._store.put_proposal(proposal)
 
-    # Apply configuration changes
-    for k, v in proposal["changes"].items():
-        _active_config[k] = v
-    _active_config["version"] += 1
-
-    guard = get_guard_instance()
     try:
         guard._audit.log_event(
             task_id=proposal_id,
             event_type="config.changed",
             actor=f"admin:{approver_id}",
-            payload={"proposal_id": proposal_id, "new_version": _active_config["version"], "changes": proposal["changes"]},
-            config_version=_active_config["version"],
+            payload={"proposal_id": proposal_id, "new_version": new_cfg["version"], "changes": proposal["changes"]},
+            config_version=new_cfg["version"],
         )
     except Exception as e:
         logger.error(f"Audit failure for config change: {e}")
@@ -187,7 +181,7 @@ def set_kill_switch(req: KillSwitchRequest):
 
 @router.get("/review-queue", summary="List Quarantined/Held Review Items")
 def list_review_queue():
-    return list(_review_queue.values())
+    return get_guard_instance()._store.list_review_items()
 
 
 @router.post("/review-queue/{id}/decision", summary="Submit Human Review Decision")
@@ -196,18 +190,18 @@ def submit_review_decision(id: str, req: ReviewDecisionRequest):
     Records a human review decision on flagged or held content.
     CRITICAL PRINCIPLE: Review decisions NEVER grant tool execution authority.
     """
-    item = _review_queue.get(id)
+    guard = get_guard_instance()
+    item = guard._store.get_review_item(id)
     if not item:
         # Create an on-demand record if needed
         item = {"id": id, "created_at": datetime.now(timezone.utc).isoformat()}
-        _review_queue[id] = item
 
     item["reviewer_id"] = req.reviewer_id
     item["decision"] = req.decision
     item["notes"] = req.notes
     item["decided_at"] = datetime.now(timezone.utc).isoformat()
+    guard._store.put_review_item(item)
 
-    guard = get_guard_instance()
     try:
         guard._audit.log_event(
             task_id=id,

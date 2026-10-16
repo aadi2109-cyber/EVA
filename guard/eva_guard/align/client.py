@@ -36,6 +36,9 @@ class AlignClient:
     ) -> None:
         # `backend(original_request, policy, tool, args) -> AlignVerdict` is the swappable
         # implementation (e.g. a LAYA typed-question client). Default: deterministic heuristic.
+        if backend is None and os.getenv("ALIGN_BACKEND", "heuristic").lower() == "laya":
+            from .laya_backend import LayaAlignBackend
+            backend = LayaAlignBackend()
         self._backend = backend or self._heuristic
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="align")
         self.enabled = (

@@ -96,6 +96,9 @@ class TaskPolicyBuilder:
         self._templates: dict[str, dict[str, Any]] = {}
         self._load_templates()
 
+    # Set from admin config (lowering it needs four-eyes). Only affects policies built afterwards.
+    side_effect_posture: str = "tier2_required"
+
     def _load_templates(self) -> None:
         if not self.templates_dir.exists():
             return
@@ -160,7 +163,7 @@ class TaskPolicyBuilder:
 
         # 6. Posture requirement: tier2_required for any side effect
         has_side_effect = any(op in WRITE_TOOLS for op in allowed_ops)
-        posture = "tier2_required" if has_side_effect else template.get("minimum_detector_posture", "tier1_ok_readonly")
+        posture = self.side_effect_posture if has_side_effect else template.get("minimum_detector_posture", "tier1_ok_readonly")
 
         # 7. Construct policy
         policy = TaskPolicy(

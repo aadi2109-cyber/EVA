@@ -33,6 +33,22 @@ CREATE TABLE IF NOT EXISTS approvals (
     expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_task ON approvals(task_id);
+CREATE TABLE IF NOT EXISTS config_versions (
+    version INTEGER PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    changed_by TEXT,
+    approved_by TEXT,
+    proposal_id TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS config_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    proposal_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS review_items (
+    id TEXT PRIMARY KEY,
+    item_json TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS kill_switch (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     state_json TEXT NOT NULL,
@@ -96,3 +112,44 @@ class GuardStore:
         with self._conn() as c:
             r = c.execute("SELECT state_json FROM kill_switch WHERE id=1").fetchone()
         return KillSwitchState.model_validate_json(r["state_json"]) if r else None
+
+    # ---- config versions, four-eyes proposals, review queue ----
+    def put_config_version(self, version: int, cfg: dict[str, Any], changed_by: str | None, approved_by: str | None, proposal_id: str | None) -> None:
+        with self._conn() as c:  # PRIMARY KEY makes versions append-only (a duplicate raises)
+            c.execute("INSERT INTO config_versions VALUES (?,?,?,?,?,?)",
+                      (version, json.dumps(cfg), changed_by, approved_by, proposal_id, datetime.now(timezone.utc).isoformat()))
+
+    def latest_config(self) -> dict[str, Any] | None:
+        with self._conn() as c:
+            r = c.execute("SELECT config_json FROM config_versions ORDER BY version DESC LIMIT 1").fetchone()
+        return json.loads(r["config_json"]) if r else None
+
+    def config_history(self) -> list[dict[str, Any]]:
+        with self._conn() as c:
+            return [{"version": r["version"], "config": json.loads(r["config_json"]), "changed_by": r["changed_by"],
+                     "approved_by": r["approved_by"], "proposal_id": r["proposal_id"], "created_at": r["created_at"]}
+                    for r in c.execute("SELECT * FROM config_versions ORDER BY version DESC")]
+
+    def put_proposal(self, proposal: dict[str, Any]) -> None:
+        with self._conn() as c:
+            c.execute("INSERT INTO config_proposals VALUES (?,?) ON CONFLICT(proposal_id) DO UPDATE SET proposal_json=excluded.proposal_json",
+                      (proposal["proposal_id"], json.dumps(proposal, default=str)))
+
+    def get_proposal(self, proposal_id: str) -> dict[str, Any] | None:
+        with self._conn() as c:
+            r = c.execute("SELECT proposal_json FROM config_proposals WHERE proposal_id=?", (proposal_id,)).fetchone()
+        return json.loads(r["proposal_json"]) if r else None
+
+    def put_review_item(self, item: dict[str, Any]) -> None:
+        with self._conn() as c:
+            c.execute("INSERT INTO review_items VALUES (?,?) ON CONFLICT(id) DO UPDATE SET item_json=excluded.item_json",
+                      (item["id"], json.dumps(item, default=str)))
+
+    def get_review_item(self, item_id: str) -> dict[str, Any] | None:
+        with self._conn() as c:
+            r = c.execute("SELECT item_json FROM review_items WHERE id=?", (item_id,)).fetchone()
+        return json.loads(r["item_json"]) if r else None
+
+    def list_review_items(self) -> list[dict[str, Any]]:
+        with self._conn() as c:
+            return [json.loads(r["item_json"]) for r in c.execute("SELECT item_json FROM review_items ORDER BY rowid")]
