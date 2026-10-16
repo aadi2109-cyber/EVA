@@ -11,7 +11,7 @@
 | Misaligned actions flagged (recall) | 10/14 = 71% |
 | Aligned actions wrongly flagged (FP rate) | 0/11 = 0% |
 | Precision of flags | 100% |
-| Latency p50 / p95 | 0.089 ms / 0.191 ms (heuristic; LAYA latency not measured) |
+| Latency p50 / p95 | 0.073 ms / 0.116 ms (heuristic; LAYA latency not measured) |
 
 ## Recall by group
 

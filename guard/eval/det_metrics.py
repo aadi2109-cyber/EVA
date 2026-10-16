@@ -17,6 +17,7 @@ from pathlib import Path
 
 from contracts.models import Provenance, ScanField, ScanRequest, SourceType, Trust
 from eva_guard.api import Guard
+from eval.store import EvalStore
 
 EVAL = Path(__file__).parent
 PROV = Provenance(source_id="corpus", source_type=SourceType.EMAIL, trust=Trust.UNTRUSTED)
@@ -55,6 +56,9 @@ def main() -> None:
     g = Guard(db_url=f"sqlite:///{tempfile.mkdtemp()}/m.db")
     det = type(g._det_pipeline).__name__ if g._det_pipeline else "ABSENT (stub fallback)"
     res = [run(s, g) for s in a.split.split(",")]
+    for r in res:
+        EvalStore().save_run("det", {"split": r["split"], **{k: r[k] for k in ("recall", "precision", "fpr", "tp", "fn", "fp", "tn", "p50", "p95")}, "by_family": r["fam"],
+                                     "detector": det}, n=r["n"], failures=r["misses"][:50], config={"granularity": "record", "via": "Guard.scan_tool_result"})
     f = lambda x: "n/a" if x is None else f"{x:.0%}"
     L = ["# Sanitization Metrics (through the Guard facade)", "",
          f"- Date: {datetime.now(timezone.utc):%Y-%m-%d}  ·  Detector: {det} (interim rule-based T2; T3 not wired through `Guard`)",

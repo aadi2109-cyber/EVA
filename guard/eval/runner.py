@@ -36,6 +36,7 @@ from contracts.models import (
     VerifyStateRequest,
 )
 from eva_guard.api import Guard
+from eval.store import EvalStore
 
 EVAL_DIR = Path(__file__).parent
 SCENARIO_FILE = EVAL_DIR / "scenarios" / "s1_s14.yaml"
@@ -383,6 +384,13 @@ def main() -> int:
         indent=2, default=str))
     print(json.dumps(summary, indent=2))
     bad = [r.id for r in results if r.profile == "full" and r.expectations_met is False]
+    failures = [{"scenario": r.id, "profile": r.profile, "title": r.title, "notes": r.notes,
+                 "actions": [a.__dict__ for a in r.actions]} for r in results if r.profile == "full" and r.expectations_met is False]
+    det_present = Guard(db_url=f"sqlite:///{tempfile.mkdtemp()}/x.db")._det_pipeline is not None
+    run_id = EvalStore().save_run("scenarios", {"profiles": summary, "det_pipeline_present": det_present}, n=len(scenarios) * 3,
+                                  failures=failures, config={"profiles": list(PROFILES), "scenario_file": SCENARIO_FILE.name,
+                                  "model": "scripted (hijacked)", "env": "mock"}, seed=None)
+    print("eval_run:", run_id)
     if bad:
         print("FAILED expectations (Full):", bad, file=sys.stderr)
     return 1 if bad else 0

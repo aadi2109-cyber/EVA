@@ -17,6 +17,7 @@ from contracts.models import (AlignVerdict, BuildPolicyRequest, CheckActionReque
                               Provenance, ScanField, ScanRequest, SourceType, Trust)
 from eva_guard.align import AlignClient
 from eva_guard.api import Guard
+from eval.store import EvalStore
 
 EVAL_DIR = Path(__file__).parent
 SEND_REQ = "Email the report to bob@corp.com"
@@ -156,6 +157,8 @@ def main() -> int:
     L += [f"| {d.id} | {d.name} | {'pass' if d.passed else '**FAIL**'} | {d.detail} |" for d in ds]
     L += ["", "Not covered here: guard HTTP outage (scenario S12), LAYA/T3 timeout inside SEC-1's detector (needs `DetPipeline`), real Gmail (never used)."]
     (EVAL_DIR / "DRILLS.md").write_text("\n".join(L) + "\n")
+    EvalStore().save_run("drills", {"passed": sum(d.passed for d in ds), "total": len(ds), "fail_closed_rate": sum(d.passed for d in ds) / len(ds)},
+                         n=len(ds), failures=[d.__dict__ for d in ds if not d.passed], config={"env": "mock"})
     print("\n".join(f"{d.id} {'ok ' if d.passed else 'FAIL'} {d.name}: {d.detail}" for d in ds))
     return 0 if all(d.passed for d in ds) else 1
 

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from eva_guard.align import AlignClient
+from eval.store import EvalStore
 
 HERE = Path(__file__).parent
 
@@ -74,6 +75,8 @@ def main() -> None:
            "fp_rate": fp / len(ali), "precision": tp / (tp + fp) if tp + fp else None,
            "p50_ms": statistics.median(lat), "p95_ms": p95, "by_group": by_group,
            "missed": [r for r in mis if not flagged(r)], "false_positives": [r for r in ali if flagged(r)]}
+    EvalStore().save_run("align", {k: out[k] for k in ("recall_flagged", "fp_rate", "precision", "p50_ms", "p95_ms", "by_group")}, n=out["n"],
+                         failures=out["missed"] + out["false_positives"], config={"backend": "heuristic", "timeout_ms": 1500})
     (HERE / "results.json").write_text(json.dumps(out, indent=2))
     L = ["# ALIGN Validation", "",
          f"- Date: {datetime.now(timezone.utc):%Y-%m-%d}  ·  Backend: **deterministic heuristic** (LAYA typed-question backend not wired; `AlignClient(backend=...)` is the swap point)",
