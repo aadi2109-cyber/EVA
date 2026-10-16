@@ -1,0 +1,4 @@
+EVA Project Plan & Architecture Notes
+1. Orchestrator enforces max_steps=12.
+2. Tools: Gmail, Files, Web, Messages.
+3. Provenance tagged on all tool inputs and outputs.

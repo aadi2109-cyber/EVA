@@ -1,0 +1,58 @@
+# Run from anywhere:  docker compose -f env/docker-compose.yml up --build
+#   api   (default)      FastAPI backend on :8000, guard imported in-process (GUARD_TRANSPORT=inprocess)
+#   guard (profile http) guard HTTP service on :8100  -> --profile http   and set GUARD_TRANSPORT=http
+#   ui    (profile ui)   Vite dev server on :5173       -> --profile ui
+# guard/ and agent/frontend/ need their own Dockerfiles (owned by SEC / FE); until they exist,
+# use only the default `api` service.
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: agent/backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.example            # defaults (committed, no secrets)
+      - path: .env              # optional local overrides / real secrets (git-ignored)
+        required: false
+    environment:
+      # paths inside the container (override the relative paths in .env.example)
+      DATABASE_URL: sqlite+aiosqlite:////data/agent.db
+      WORKSPACE_ROOT: /data/workspace
+      MOCK_STATE_FILE: /data/mock_state.json
+      GUARD_SERVICE_URL: http://guard:8100
+    volumes:
+      - eva-data:/data
+    restart: unless-stopped
+
+  guard:
+    profiles: ["http"]
+    build:
+      context: ../guard
+      dockerfile: Dockerfile
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    environment:
+      GUARD_DATABASE_URL: sqlite:////data/guard.db
+    volumes:
+      - guard-data:/data
+
+  ui:
+    profiles: ["ui"]
+    build:
+      context: ../agent/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+
+volumes:
+  eva-data:
+  guard-data:

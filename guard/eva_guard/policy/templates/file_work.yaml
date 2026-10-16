@@ -1,0 +1,19 @@
+template_id: file_work
+description: Inspect and manage files within the workspace sandbox
+allowed_operations:
+  - files.list
+  - files.read
+  - files.search
+  - files.write
+allowed_data_scope: []
+allowed_destinations:
+  - "*"
+prohibited_side_effects:
+  - gmail.send
+  - messages.send
+approval_required_for:
+  - files.write
+minimum_detector_posture: tier2_required
+failure_mode: fail_closed
+max_steps: 12
+origin: template

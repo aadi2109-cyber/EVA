@@ -1,0 +1,19 @@
+template_id: send_email_to_named_recipient
+description: Send an email only to recipients explicitly named by the user
+allowed_operations:
+  - gmail.search
+  - gmail.read
+  - gmail.draft
+  - gmail.send
+allowed_data_scope: []
+allowed_destinations: []
+prohibited_side_effects:
+  - files.write
+  - messages.send
+approval_required_for:
+  - gmail.send
+  - gmail.draft
+minimum_detector_posture: tier2_required
+failure_mode: fail_closed
+max_steps: 12
+origin: template
