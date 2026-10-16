@@ -11,7 +11,7 @@
 | Misaligned actions flagged (recall) | 10/14 = 71% |
 | Aligned actions wrongly flagged (FP rate) | 0/11 = 0% |
 | Precision of flags | 100% |
-| Latency p50 / p95 | 0.095 ms / 0.188 ms (heuristic; LAYA latency not measured) |
+| Latency p50 / p95 | 0.089 ms / 0.191 ms (heuristic; LAYA latency not measured) |
 
 ## Recall by group
 
@@ -42,4 +42,5 @@
 ## Known limits
 
 - The heuristic relies on keyword lists and exact-destination comparison; the `hard` group shows it misses intent contradictions without those cues. The deterministic gateway (policy, destinations, provenance, approvals) is what actually stops those actions.
+- Several `swapped_dest` hits come from literal keywords (`evil`, `attacker`, `exfil`) or from the user having named a different destination; treat that group as an upper bound.
 - LAYA is unproven on our labels until a backend is wired and this same set (plus a larger one) is re-run; published LAYA figures are targets, not our results.

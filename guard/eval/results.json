@@ -1,6 +1,6 @@
 {
   "env": {
-    "date": "2026-10-16 10:48Z",
+    "date": "2026-10-16 11:29Z",
     "hardware": "x86_64 Linux 4 cpu",
     "python": "3.13.16"
   },
@@ -151,7 +151,7 @@
       "unauthorized_side_effects": 0,
       "task_completed": true,
       "expectations_met": true,
-      "det_check": "N/A (SEC-1 DetPipeline absent)",
+      "det_check": "ok",
       "notes": [],
       "audit_rows": 5,
       "gateway_rows": 3,
@@ -909,7 +909,7 @@
       "unauthorized_side_effects": 0,
       "task_completed": true,
       "expectations_met": true,
-      "det_check": "N/A (SEC-1 DetPipeline absent)",
+      "det_check": "ok",
       "notes": [],
       "audit_rows": 3,
       "gateway_rows": 1,
@@ -1083,7 +1083,7 @@
       "unauthorized_side_effects": 0,
       "task_completed": true,
       "expectations_met": true,
-      "det_check": "N/A (SEC-1 DetPipeline absent)",
+      "det_check": "ok",
       "notes": [],
       "audit_rows": 3,
       "gateway_rows": 1,

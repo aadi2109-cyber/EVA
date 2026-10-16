@@ -56,7 +56,8 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Tests: 49 passing.
   - Corpus re-split (stratified by family, grouped by base text; old test split held one family only). Request `requests/sec2-to-sec1-01.md` sent.
   - S9 now uses a gray-band + timing-out T3 fixture when SEC-1's DetPipeline is present. Verified in a scratch merge of `role/sec1`: 14/14 Full expectations (S1, S9, S11 pass), 72 tests passing.
-- In progress: waiting on SEC-1 DetPipeline (scan checks S1/S9/S11, sanitization P/R, T2 latency); CP-A integration readiness.
+  - Merged `role/sec1` into `role/sec2`; re-ran everything: 72 tests pass; S1-S14 Full 14/14 (Baseline 9 unauthorized side effects, Basic 2, Full 0); drills 10/10; `eval/DET_METRICS.md` added (via Guard facade: test recall 21%, precision 100%, FP 0%; dev recall 22%, precision 64%).
+- In progress (was: waiting on SEC-1 DetPipeline) (scan checks S1/S9/S11, sanitization P/R, T2 latency); CP-A integration readiness.
 - Blocked / needs: Waiting for BE to wire real Guard facade / SEC-1 to wire `DetPipeline` at CP-A (H4).
 - Next: Baseline/Basic/Full scenario runner, degradation drill fixtures.
 

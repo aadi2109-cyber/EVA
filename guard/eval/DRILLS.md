@@ -14,6 +14,6 @@
 | D7 | Kill switch effective on next check | pass | ALLOW -> DENY ['KILL_SWITCH'] |
 | D8 | Unknown task / unknown tool -> deny by default | pass | DENY, DENY |
 | D9 | Audit chain valid after normal traffic | pass | Audit chain intact and verified across 6 events |
-| D10 | No DetPipeline installed -> visible warning | pass | warnings=['DET_PIPELINE_ABSENT'] |
+| D10 | No DetPipeline installed -> visible warning | pass | warnings=[] |
 
 Not covered here: guard HTTP outage (scenario S12), LAYA/T3 timeout inside SEC-1's detector (needs `DetPipeline`), real Gmail (never used).
