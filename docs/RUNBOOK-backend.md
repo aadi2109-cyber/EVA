@@ -88,6 +88,9 @@ Email/web HTML becomes text via `app/tools/htmltext.py`: visible text first, the
 off-screen). Nothing hidden is dropped, so the guard scanner sees it. `<script>`/`<style>` bodies are omitted.
 `web.search` is simulated (fixed example.com results); there is no search backend.
 
+### Where configuration comes from
+The backend loads, lowest to highest priority: `env/.env.example` (defaults) < `env/.env` (git-ignored secrets) < `./.env` < real process environment variables. The **guard service reads only its process environment** (e.g. `GUARD_SERVICE_TOKEN`), not `env/.env`: start it with the same values, e.g. `set -a; . env/.env; set +a; uvicorn service.main:app --port 8100` from `guard/`. A token mismatch between the two shows up as 401/502 from `/api/health` and `/api/admin/*`. Docker compose layers `env/.env` for both services.
+
 ### Web, search and model provider notes
 - **web.fetch SSRF:** every non-mock host is DNS-resolved on every redirect hop; all returned addresses must be public (loopback, private, link-local, CGNAT, metadata, IPv4-mapped IPv6 and odd numeric forms like `2130706433` are refused), then the connection is pinned to the checked IP (Host header and TLS SNI preserved) so DNS rebinding can't swap the target. Unresolvable hosts are refused.
 - **web.search:** `WEB_SEARCH_PROVIDER=mock` (default, always used in eval) or `ollama` (Ollama web-search API, `OLLAMA_API_KEY`). Queries are capped at 256 chars; results are capped, scheme-filtered and treated as untrusted. The search *query* is an egress channel the gateway does not currently police: see `coordination/requests/BE-to-SEC2-01.md`.

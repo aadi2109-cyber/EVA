@@ -6,14 +6,20 @@ Enforces hard security invariants at boot time.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Literal
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_ENV_DIR = Path(__file__).resolve().parents[3] / "env"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env", "../../env/.env.example"),
+        # Later files override earlier ones; real process env vars override all files.
+        # Resolved from this file, not the CWD: defaults < env/.env (git-ignored secrets) < ./.env.
+        env_file=(str(_ENV_DIR / ".env.example"), str(_ENV_DIR / ".env"), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
