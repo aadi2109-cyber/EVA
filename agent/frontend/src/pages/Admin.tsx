@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { Health, AuditRecord } from '../api/types';
+import { Health, AuditRecord, User } from '../api/types';
+import { ReviewQueue } from '../components/admin/ReviewQueue';
+import { ConfigProposals } from '../components/admin/ConfigProposals';
 
 const KILL_TARGETS: { key: string; scope: 'tool' | 'all_write_tools'; label: string }[] = [
   { key: 'all_write_tools', scope: 'all_write_tools', label: 'all_write_tools' },
@@ -9,7 +11,11 @@ const KILL_TARGETS: { key: string; scope: 'tool' | 'all_write_tools'; label: str
   { key: 'messages.send', scope: 'tool', label: 'messages.send' },
 ];
 
-export const Admin: React.FC = () => {
+interface AdminProps {
+  currentUser: User;
+}
+
+export const Admin: React.FC<AdminProps> = ({ currentUser }) => {
   const [health, setHealth] = useState<Health | null>(null);
   const [auditRows, setAuditRows] = useState<AuditRecord[]>([]);
   const [evalRuns, setEvalRuns] = useState<any[] | null>(null);
@@ -190,6 +196,10 @@ export const Admin: React.FC = () => {
           })}
         </div>
       </section>
+
+      <ConfigProposals currentAdminId={currentUser.id} />
+
+      <ReviewQueue reviewerId={currentUser.id} />
 
       {/* Audit Explorer */}
       <section className="p-5 sm:p-6 rounded-2xl bg-surface-container-low border border-white/5 shadow-xl space-y-4">

@@ -51,3 +51,21 @@ test('S7: degraded guard shows a persistent banner that side-effect tools are di
   await login(page);
   await expect(page.getByText(/Side-effect tools are disabled/i)).toBeVisible();
 });
+
+test('admin: proposing a config change needs a justification and says a second admin must approve', async ({ page }) => {
+  const stub = await stubApi(page, { role: 'admin' });
+  await login(page);
+  await page.getByText(/Admin Enclave/).click();
+
+  await expect(page.getByText('The review queue is empty.')).toBeVisible();
+  await expect(page.getByText('Active configuration (v1)')).toBeVisible();
+
+  const submit = page.getByRole('button', { name: 'Submit proposal' });
+  await page.getByLabel('Failure mode').selectOption('tier1_only_warning');
+  await expect(submit).toBeDisabled();
+  await page.getByLabel(/Justification/).fill('demo');
+  await submit.click();
+
+  await expect(page.getByRole('status').first()).toContainText('different admin must approve');
+  expect(stub.proposals[0]).toMatchObject({ changes: { failure_mode: 'tier1_only_warning' }, justification: 'demo' });
+});

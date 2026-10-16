@@ -305,3 +305,27 @@ export interface SecurityTraceItem {
   call_id?: string;
   details?: any;
 }
+
+export type ReviewDecision = "approved" | "rejected" | "investigate";
+
+/** Review decisions are records only: they never grant tool authority. */
+export interface ReviewItem {
+  id: string;
+  created_at?: string;
+  reviewer_id?: string;
+  decision?: ReviewDecision;
+  notes?: string;
+  decided_at?: string;
+  [extra: string]: unknown;
+}
+
+export interface ConfigProposal {
+  proposal_id: string;
+  proposed_by: string;
+  changes: Record<string, any>;
+  justification: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+}

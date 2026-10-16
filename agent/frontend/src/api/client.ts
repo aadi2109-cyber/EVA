@@ -6,6 +6,9 @@ import {
   ConnectorInfo,
   WorkspaceFile,
   AuditRecord,
+  ConfigProposal,
+  ReviewItem,
+  ReviewDecision,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -167,6 +170,26 @@ export const api = {
         body: JSON.stringify({ scope, target, enabled }),
       });
     },
+    getConfig: async (): Promise<Record<string, any>> => request('/api/admin/config'),
+    proposeConfig: async (changes: Record<string, any>, justification: string): Promise<ConfigProposal> =>
+      // proposed_by is overwritten server-side from the JWT; the guard requires the field to exist.
+      request('/api/admin/config/proposals', {
+        method: 'POST',
+        body: JSON.stringify({ proposed_by: 'me', changes, justification }),
+      }),
+    approveProposal: async (proposalId: string): Promise<ConfigProposal> =>
+      request(`/api/admin/config/proposals/${encodeURIComponent(proposalId)}/approve`, { method: 'POST' }),
+    getReviewQueue: async (): Promise<ReviewItem[]> => request('/api/admin/review-queue'),
+    recordReviewDecision: async (
+      id: string,
+      reviewerId: string,
+      decision: ReviewDecision,
+      notes: string
+    ): Promise<{ status: string; item: ReviewItem }> =>
+      request(`/api/admin/review-queue/${encodeURIComponent(id)}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ reviewer_id: reviewerId, decision, notes }),
+      }),
     getEvalRuns: async (): Promise<any[]> => request<any[]>('/api/admin/eval/runs'),
   },
 };

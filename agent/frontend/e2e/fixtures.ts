@@ -31,6 +31,8 @@ const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 export interface Stub {
+  role?: 'user' | 'admin';
+  proposals: any[];
   events?: Ev[];
   health?: unknown;
   approvals: { id: string; body: any }[];
@@ -38,7 +40,8 @@ export interface Stub {
 
 /** Stub every /api call the UI makes. Returns a record of approval submissions. */
 export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stub> {
-  const stub: Stub = { events: [], health: HEALTHY, approvals: [], ...opts };
+  const stub: Stub = { events: [], health: HEALTHY, approvals: [], proposals: [], ...opts };
+  const me = { ...USER, role: stub.role ?? 'user' };
 
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
     const req = route.request();
@@ -48,10 +51,10 @@ export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stu
     if (path === '/api/auth/login') {
       const { password } = req.postDataJSON();
       return password === 'good'
-        ? json(route, { access_token: 'jwt-test', token_type: 'bearer', user: USER })
+        ? json(route, { access_token: 'jwt-test', token_type: 'bearer', user: me })
         : json(route, { detail: 'Incorrect email or password' }, 401);
     }
-    if (path === '/api/me') return json(route, USER);
+    if (path === '/api/me') return json(route, me);
     if (path === '/api/health') return json(route, stub.health);
     if (path === '/api/tasks' && req.method() === 'POST') return json(route, { task_id: 't1' });
     if (path === '/api/tasks') return json(route, []);
@@ -66,6 +69,16 @@ export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stu
       stub.approvals.push({ id: path.split('/').pop()!, body: req.postDataJSON() });
       return json(route, { status: 'approved', event_id: 'e1' });
     }
+    if (path === '/api/admin/health') return json(route, (stub.health as any).guard);
+    if (path === '/api/admin/config') {
+      return json(route, { version: 1, minimum_detector_posture: 'tier2_required', failure_mode: 'fail_closed', block_threshold: 0.85, t3_enabled: true, align_enabled: true });
+    }
+    if (path === '/api/admin/config/proposals') {
+      stub.proposals.push(req.postDataJSON());
+      return json(route, { proposal_id: 'prop-1', proposed_by: me.id, changes: req.postDataJSON().changes, justification: req.postDataJSON().justification, status: 'pending', created_at: '2026-01-01T00:00:00Z' });
+    }
+    if (path === '/api/admin/audit') return json(route, []);
+    if (path === '/api/admin/review-queue') return json(route, []);
     return json(route, { detail: `unstubbed ${path}` }, 404);
   });
   return stub;

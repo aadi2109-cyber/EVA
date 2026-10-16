@@ -533,7 +533,7 @@ export const App: React.FC = () => {
           <History onReplayTask={replayTask} />
         )}
 
-        {currentTab === 'admin' && <Admin />}
+        {currentTab === 'admin' && <Admin currentUser={currentUser} />}
       </main>
 
       {/* Exact Action Approval Modal */}
