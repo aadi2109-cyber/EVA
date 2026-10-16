@@ -284,6 +284,7 @@ class TaskOrchestrator:
                             return {"status": "cancelled"}
 
                         if not self.approval_decision or not self.approval_decision.status == "approved":
+                            self.actions_denied += 1
                             await broadcaster.emit(
                                 SSEEventType.APPROVAL_RESOLVED,
                                 {"approval_id": (self.pending_approval or approval_req).approval_id, "status": "denied"},

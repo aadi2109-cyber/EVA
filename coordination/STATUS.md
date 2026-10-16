@@ -25,7 +25,7 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Backend suite: 119/119 passing.
 - In progress: CP-C robustness.
 - Blocked / needs: None. Real Gmail/OAuth and Docker build not verified here (mocked-HTTP tests only).
-- Next / known issues: S6 runner hangs (auto_deny polls ~3s); tests share ./test_agent.db (run one pytest at a time); web.search is simulated; SSRF check is hostname-only; reconnect flag stored in expires_hint (needs status column migration).
+- Next / known issues: tests share ./test_agent.db (run one pytest at a time); web.search is simulated; SSRF check is hostname-only; reconnect flag stored in expires_hint (needs status column migration).
 
 ## SEC-1
 - Done:
