@@ -88,6 +88,12 @@ Email/web HTML becomes text via `app/tools/htmltext.py`: visible text first, the
 off-screen). Nothing hidden is dropped, so the guard scanner sees it. `<script>`/`<style>` bodies are omitted.
 `web.search` is simulated (fixed example.com results); there is no search backend.
 
+### Web, search and model provider notes
+- **web.fetch SSRF:** every non-mock host is DNS-resolved on every redirect hop; all returned addresses must be public (loopback, private, link-local, CGNAT, metadata, IPv4-mapped IPv6 and odd numeric forms like `2130706433` are refused), then the connection is pinned to the checked IP (Host header and TLS SNI preserved) so DNS rebinding can't swap the target. Unresolvable hosts are refused.
+- **web.search:** `WEB_SEARCH_PROVIDER=mock` (default, always used in eval) or `ollama` (Ollama web-search API, `OLLAMA_API_KEY`). Queries are capped at 256 chars; results are capped, scheme-filtered and treated as untrusted. The search *query* is an egress channel the gateway does not currently police: see `coordination/requests/BE-to-SEC2-01.md`.
+- **Ollama model provider:** an HTTP error, error chunk, timeout (180 s total) or empty stream ends the task as `failed` ("Model unavailable"); provider error text is never fed back to the model. Verified against the published API docs and a mocked server only, not a live key.
+- **Gmail real mode caps:** text parts 256 KB each, 512 KB per message, MIME depth 12, 200 parts; truncation is written into the body so it is visible to the scanner. A transient Google/token-endpoint outage does NOT flag the account; a rejected refresh token or a still-401 fresh token does (`status=reconnect_needed`).
+
 ## 6. Gmail setup (real mode)
 
 Human prerequisites (once), per `docs/03` section 3: dedicated Gmail account; Google Cloud project with Gmail API enabled;

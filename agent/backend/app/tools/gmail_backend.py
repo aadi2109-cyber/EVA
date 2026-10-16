@@ -91,20 +91,74 @@ class MockGmailBackend:
 
 
 # ------------------------------------------------------------------ real
-def _b64url_decode(data: str) -> str:
-    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", errors="replace")
+MAX_MIME_DEPTH = 12            # deeper nesting is hostile/broken: stop descending (flagged)
+MAX_MIME_PARTS = 200
+MAX_PART_CHARS = 256 * 1024    # per text part
+MAX_BODY_CHARS = 512 * 1024    # all text parts together
+_CHARSET_RE = re.compile(r"charset\s*=\s*\"?([A-Za-z0-9_.:-]+)", re.I)
 
 
-def _walk_parts(payload: dict[str, Any], plain: list[str], html: list[str]) -> None:
-    mime = (payload.get("mimeType") or "").lower()
+def _b64url_decode(data: str, charset: str = "utf-8") -> str:
+    raw = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+    try:
+        return raw.decode(charset or "utf-8", errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
+
+
+class _Walk:
+    def __init__(self) -> None:
+        self.plain: list[str] = []
+        self.html: list[str] = []
+        self.parts = 0
+        self.chars = 0
+        self.notes: list[str] = []  # surfaced in the body so nothing is silently lost
+
+    def note(self, text: str) -> None:
+        if text not in self.notes:
+            self.notes.append(text)
+
+
+def _part_charset(payload: dict[str, Any]) -> str:
+    for h in payload.get("headers") or []:
+        if str(h.get("name", "")).lower() == "content-type":
+            m = _CHARSET_RE.search(str(h.get("value", "")))
+            if m:
+                return m.group(1)
+    m = _CHARSET_RE.search(payload.get("mimeType") or "")
+    return m.group(1) if m else "utf-8"
+
+
+def _walk_parts(payload: dict[str, Any], w: "_Walk", depth: int = 0) -> None:
+    if not isinstance(payload, dict):
+        return
+    w.parts += 1
+    if w.parts > MAX_MIME_PARTS:
+        w.note("[TRUNCATED: too many MIME parts]")
+        return
+    mime = (payload.get("mimeType") or "").split(";")[0].strip().lower()
     data = (payload.get("body") or {}).get("data")
-    if data and not payload.get("filename"):
-        if mime == "text/plain":
-            plain.append(_b64url_decode(data))
-        elif mime == "text/html":
-            html.append(_b64url_decode(data))
-    for part in payload.get("parts") or []:
-        _walk_parts(part, plain, html)
+    if data and not payload.get("filename") and mime in ("text/plain", "text/html"):
+        try:
+            text = _b64url_decode(data, _part_charset(payload))
+        except ValueError:
+            text = f"[UNDECODABLE_PART: {mime}]"
+        if len(text) > MAX_PART_CHARS:
+            text = text[:MAX_PART_CHARS]
+            w.note(f"[TRUNCATED: {mime} part exceeded size cap]")
+        room = MAX_BODY_CHARS - w.chars
+        if len(text) > room:
+            text = text[: max(room, 0)]
+            w.note("[TRUNCATED: message body exceeded size cap]")
+        w.chars += len(text)
+        if text:
+            (w.plain if mime == "text/plain" else w.html).append(text)
+    children = payload.get("parts") or []
+    if children and depth >= MAX_MIME_DEPTH:
+        w.note("[TRUNCATED: MIME nesting too deep]")
+        return
+    for part in children if isinstance(children, list) else []:
+        _walk_parts(part, w, depth + 1)
 
 
 def _headers(payload: dict[str, Any]) -> dict[str, str]:
@@ -127,6 +181,15 @@ class RealGmailBackend:
                 continue
             break
         if resp.status_code == 401:
+            # A freshly refreshed token was still refused: consent was revoked. Flag the account
+            # so later calls fail fast with "reconnect needed" instead of looping on Google.
+            from app.connectors.gmail_oauth import _load_account, mark_reconnect_needed
+            from app.db.database import async_session_factory
+
+            async with async_session_factory() as session:
+                acc = await _load_account(session, self.user_id)
+                if acc is not None:
+                    await mark_reconnect_needed(session, acc, "Google rejected the access token")
             raise ReconnectNeeded()
         if resp.status_code == 404:
             raise ValueError("Gmail message or draft not found")
@@ -136,7 +199,15 @@ class RealGmailBackend:
             raise RuntimeError(f"Gmail API temporarily unavailable (HTTP {resp.status_code})")
         if resp.status_code >= 400:
             raise ValueError(f"Gmail API error (HTTP {resp.status_code})")
-        return resp.json() if resp.content else {}
+        if not resp.content:
+            return {}
+        try:
+            data = resp.json()
+        except (ValueError, RecursionError) as e:  # malformed or hostile (deeply nested) JSON
+            raise ValueError("Gmail API returned an invalid response") from e
+        if not isinstance(data, dict):
+            raise ValueError("Gmail API returned an invalid response")
+        return data
 
     @staticmethod
     def _check_id(message_id: str) -> str:
@@ -145,7 +216,8 @@ class RealGmailBackend:
         return message_id
 
     async def search(self, query: str, max_results: int) -> list[dict[str, Any]]:
-        listing = await self._request("GET", "/users/me/messages", params={"q": query, "maxResults": max(1, min(max_results, 50))})
+        max_results = max(1, min(max_results, 50))
+        listing = await self._request("GET", "/users/me/messages", params={"q": query, "maxResults": max_results})
         out = []
         for ref in listing.get("messages", [])[:max_results]:
             msg = await self._request(
@@ -161,9 +233,11 @@ class RealGmailBackend:
         msg = await self._request("GET", f"/users/me/messages/{self._check_id(message_id)}", params={"format": "full"})
         payload = msg.get("payload", {})
         h = _headers(payload)
-        plain: list[str] = []
-        html: list[str] = []
-        _walk_parts(payload, plain, html)
+        walk = _Walk()
+        _walk_parts(payload, walk)
+        plain, html = walk.plain, walk.html
+        if walk.notes:
+            plain = plain + walk.notes  # visible to the scanner and the model: never silent
         return {
             "id": msg["id"],
             "thread_id": msg.get("threadId", ""),

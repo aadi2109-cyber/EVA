@@ -7,6 +7,10 @@ web.fetch hardening:
   * HTML converted to text; hidden text/comments extracted, never silently dropped
   * no cookies are stored or sent (cookie jar policy rejects everything)
   * redirects are followed manually (max MAX_REDIRECTS) and EVERY hop is re-validated
+  * SSRF: every non-mock host is DNS-resolved on every hop; ALL returned addresses must be
+    global (no loopback/private/link-local/CGNAT/metadata, incl. IPv4-mapped IPv6 and odd numeric
+    forms like 2130706433). The connection is then pinned to the checked IP (Host header and
+    TLS SNI/cert name preserved), so DNS rebinding between check and connect cannot redirect it
   * APP_ENV=eval: only the mock web server (env/mock/web) is reachable; any other
     host is refused before a socket is opened
 """
@@ -16,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import http.cookiejar
 import ipaddress
+import socket
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,6 +32,7 @@ from pydantic import BaseModel, Field
 from contracts.models import Provenance, ScanField, SourceType, Trust
 from app.config import settings
 from app.tools.base import ToolContext, ToolExecutionResult
+from app.tools.web_search import SearchError, clean_query, get_search_provider
 from app.tools.htmltext import extract_html_text_with_hidden, looks_like_html
 from env.mock.state import state as mock_state
 
@@ -92,6 +98,45 @@ def check_url_allowed(url: str) -> httpx.URL:
     return httpx.URL(url)
 
 
+Resolver = Any  # async (host: str) -> list[str]
+_resolver: Resolver | None = None  # tests inject fake DNS here
+
+
+def set_resolver(resolver: Resolver | None) -> None:
+    global _resolver
+    _resolver = resolver
+
+
+async def _system_resolve(host: str) -> list[str]:
+    infos = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    return [info[4][0] for info in infos]
+
+
+def _ip_is_public(addr: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(addr.split("%", 1)[0])
+    except ValueError:
+        return False
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:  # ::ffff:127.0.0.1 and friends
+        ip = mapped
+    return ip.is_global and not ip.is_multicast
+
+
+async def resolve_public_ips(host: str) -> list[str]:
+    """Resolve `host` and require every address to be public. Raises UrlNotAllowed otherwise."""
+    try:
+        addrs = await (_resolver or _system_resolve)(host)
+    except (OSError, UnicodeError) as e:
+        raise UrlNotAllowed(f"Host '{host}' could not be resolved") from e
+    if not addrs:
+        raise UrlNotAllowed(f"Host '{host}' did not resolve to any address")
+    bad = [a for a in addrs if not _ip_is_public(a)]
+    if bad:
+        raise UrlNotAllowed(f"Host '{host}' resolves to a non-public address ({bad[0]})")
+    return addrs
+
+
 class MockWebTransport(httpx.AsyncBaseTransport):
     """Serves env/mock/web/* for mock hosts. `/redirect?to=<url>` answers 302 (for redirect tests)."""
 
@@ -133,7 +178,16 @@ class _RoutingTransport(httpx.AsyncBaseTransport):
         # Defence in depth: the real transport is never reachable in eval.
         if settings.APP_ENV == "eval":
             raise UrlNotAllowed(f"Host '{request.url.host}' is not reachable in eval mode")
-        return await self.real.handle_async_request(request)
+        # Resolve + validate on EVERY hop, then pin the connection to the validated IP.
+        host = request.url.host
+        addrs = await resolve_public_ips(host)
+        pinned = httpx.Request(
+            request.method,
+            request.url.copy_with(host=addrs[0]),
+            headers=request.headers,  # keeps the original Host header
+            extensions={**request.extensions, "sni_hostname": host},  # TLS SNI + cert name
+        )
+        return await self.real.handle_async_request(pinned)
 
     async def aclose(self) -> None:
         await self.real.aclose()
@@ -220,21 +274,16 @@ class WebSearchTool:
     async def run(self, args: dict[str, Any], context: ToolContext) -> ToolExecutionResult:
         validated = WebSearchArgs.model_validate(args)
 
-        # In eval or mock environment, return simulated search results
-        results = [
-            {
-                "title": f"Result 1 for {validated.query}",
-                "url": "https://example.com/docs/agent-safety",
-                "snippet": "EVA Agent uses deterministic policy gateways and sanitizes untrusted input.",
-            },
-            {
-                "title": f"Result 2 for {validated.query}",
-                "url": "https://example.com/docs/architecture",
-                "snippet": "Comprehensive multi-agent architecture with in-process and HTTP guard clients.",
-            },
-        ]
+        try:
+            query = clean_query(validated.query)
+            results = [
+                {"title": r.title, "url": r.url, "snippet": r.snippet}
+                for r in await get_search_provider().search(query)
+            ]
+        except SearchError as e:
+            raise RuntimeError(str(e)) from e
 
-        summary_text = "\n".join([f"[{r['title']}]({r['url']}): {r['snippet']}" for r in results])
+        summary_text = "\n".join([f"[{r['title']}]({r['url']}): {r['snippet']}" for r in results]) or "(no results)"
         scan_field = ScanField(
             name="search_results",
             text=summary_text,

@@ -33,7 +33,7 @@ from app.db.database import async_session_factory
 from app.db.models import ApprovalIndex, Message, Task, ToolExecution, User
 from app.guard_client.base import GuardClient, GuardDownError, GuardError
 from app.guard_client.factory import get_guard_client
-from app.model.base import ModelEvent, ModelEventType, ModelProvider
+from app.model.base import ModelEvent, ModelEventType, ModelProvider, ModelProviderError
 from app.model.ollama import OllamaProvider
 from app.sse.broadcaster import get_task_broadcaster
 from app.tools.base import ToolContext
@@ -163,18 +163,24 @@ class TaskOrchestrator:
                 accumulated_text = ""
                 proposed_tool_calls: list[ModelEvent] = []
 
-                async for event in self.model_provider.step(messages, tools=tools_spec):
-                    if self.cancellation_event.is_set():
-                        await self._terminate_task("cancelled")
-                        return {"status": "cancelled"}
+                try:
+                    async for event in self.model_provider.step(messages, tools=tools_spec):
+                        if self.cancellation_event.is_set():
+                            await self._terminate_task("cancelled")
+                            return {"status": "cancelled"}
 
-                    if event.type == ModelEventType.TEXT_DELTA:
-                        accumulated_text += event.text
-                        await broadcaster.emit(SSEEventType.MODEL_DELTA, {"text": event.text})
-                    elif event.type == ModelEventType.TOOL_CALL:
-                        proposed_tool_calls.append(event)
-                    elif event.type == ModelEventType.DONE:
-                        break
+                        if event.type == ModelEventType.TEXT_DELTA:
+                            accumulated_text += event.text
+                            await broadcaster.emit(SSEEventType.MODEL_DELTA, {"text": event.text})
+                        elif event.type == ModelEventType.TOOL_CALL:
+                            proposed_tool_calls.append(event)
+                        elif event.type == ModelEventType.DONE:
+                            break
+                except ModelProviderError as e:
+                    # The model backend failed: fail the task; never treat the error as an answer.
+                    logger.error("Model provider failed: %s", e)
+                    await self._terminate_task("failed", final_text=f"Model unavailable: {e}")
+                    return {"status": "failed", "final_text": f"Model unavailable: {e}"}
 
                 if accumulated_text:
                     final_assistant_text = accumulated_text

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     OLLAMA_API_KEY: str = ""
     OLLAMA_MODEL: str = "llama3.1"
 
+    # web.search backend: "mock" (default; always used in eval) or "ollama" (Ollama web-search API)
+    WEB_SEARCH_PROVIDER: Literal["mock", "ollama"] = "mock"
+
     GUARD_TRANSPORT: Literal["inprocess", "http"] = "inprocess"
     GUARD_SERVICE_URL: str = "http://localhost:8100"
     GUARD_SERVICE_TOKEN: str = "dev-guard-token"
@@ -77,6 +80,9 @@ class Settings(BaseSettings):
                 f"EVA_FAIL_* failure-injection flags are forbidden when APP_ENV='{self.APP_ENV}'. "
                 f"They are only permitted when APP_ENV='eval'."
             )
+
+        if self.APP_ENV == "eval" and self.WEB_SEARCH_PROVIDER != "mock":
+            raise ValueError("WEB_SEARCH_PROVIDER must be 'mock' when APP_ENV='eval' (mock web only).")
 
         # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock
         if self.APP_ENV == "eval" and self.GMAIL_MODE == "real":

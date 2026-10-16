@@ -9,6 +9,11 @@ from enum import Enum
 from typing import Any, AsyncIterator, Protocol, runtime_checkable
 
 
+class ModelProviderError(RuntimeError):
+    """The model backend failed (HTTP error, bad/empty stream, timeout). The task fails closed;
+    provider error text is never fed back to the model as if it were an answer."""
+
+
 class ModelEventType(str, Enum):
     TEXT_DELTA = "text_delta"
     TOOL_CALL = "tool_call"
