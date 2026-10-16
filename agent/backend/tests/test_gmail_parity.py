@@ -177,7 +177,7 @@ async def test_revoked_grant_means_reconnect_needed(monkeypatch):
         await GmailSearchTool().run({"query": "x"}, ctx(uid))
     async with async_session_factory() as s:
         acc = (await s.execute(select(ConnectorAccount))).scalar_one()
-        assert acc.expires_hint.startswith("RECONNECT_NEEDED")
+        assert acc.status == "reconnect_needed"
     # Once flagged, no further Google call is attempted until the user reconnects.
     fake = FakeGoogle()
     set_google_transport(fake.transport)

@@ -23,9 +23,11 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Full test suite passing: 22/22 tests passing in `agent/backend/tests/`.
   - CP-B work: HttpGuardClient parity tests vs guard service, approvals e2e (S4) incl. edited-args re-approval, admin proxy, SSE Last-Event-ID replay (auth added), web tool hardening, Gmail mock/real backend parity + OAuth hardening, failure-injection hooks (EVA_FAIL_*), eval CLI + reset, Dockerfile/.env.example/compose, docs/RUNBOOK-backend.md.
   - Backend suite: 119/119 passing.
-- In progress: CP-C robustness.
-- Blocked / needs: None. Real Gmail/OAuth and Docker build not verified here (mocked-HTTP tests only).
-- Next / known issues: tests share ./test_agent.db (run one pytest at a time); web.search is simulated; SSRF check is hostname-only; reconnect flag stored in expires_hint (needs status column migration).
+  - Prompt A: per-process test DB (parallel pytest safe); connector `status` column + migration 002 (replaces expires_hint prefix); plain `sqlite:///` DATABASE_URL accepted; edited-args re-approval e2e test; scenarios S3, S8, S10, S11 added to runner; S13/S14 tested through the admin proxy; admin proxy now takes admin identity from the JWT (X-Admin-User-Id, proposed_by), so four-eyes can't be spoofed.
+  - Backend suite: 128/128 passing.
+- In progress: CP-C robustness (ops/tools work split to other BE teammates).
+- Blocked / needs: None. Real Gmail/OAuth and Docker build not verified (mocked-HTTP tests only). S9 (LAYA timeout on a gray-band sentence) is detector-side: needs SEC-1's DetPipeline. S11 "quoted text not stripped" is only as strong as the detector wired in.
+- Next / known issues: web.search simulated; SSRF check is hostname-only; in-process mode admin changes don't reach the in-process Guard instance.
 
 ## SEC-1
 - Done:

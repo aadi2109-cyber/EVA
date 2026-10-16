@@ -41,7 +41,8 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1"
 STATE_TTL_SECONDS = 600
 TESTING_EXPIRY_HINT = "Testing mode: refresh token expires in ~7 days"
-RECONNECT_MARKER = "RECONNECT_NEEDED"  # stored in ConnectorAccount.expires_hint (no schema change needed)
+STATUS_CONNECTED = "connected"
+STATUS_RECONNECT_NEEDED = "reconnect_needed"
 
 
 class ReconnectNeeded(RuntimeError):
@@ -150,6 +151,7 @@ async def handle_gmail_oauth_callback(code: str, user_id: str, session: AsyncSes
             encrypted_refresh_token=encrypt_token(refresh_token),
             scopes=" ".join(GMAIL_SCOPES),
             expires_hint=TESTING_EXPIRY_HINT,
+            status=STATUS_CONNECTED,
         )
     )
     await session.commit()
@@ -164,11 +166,12 @@ async def _load_account(session: AsyncSession, user_id: str) -> ConnectorAccount
 
 
 def account_needs_reconnect(acc: ConnectorAccount | None) -> bool:
-    return acc is not None and (acc.expires_hint or "").startswith(RECONNECT_MARKER)
+    return acc is not None and acc.status == STATUS_RECONNECT_NEEDED
 
 
 async def mark_reconnect_needed(session: AsyncSession, acc: ConnectorAccount, reason: str) -> None:
-    acc.expires_hint = f"{RECONNECT_MARKER}: {reason}"[:128]
+    acc.status = STATUS_RECONNECT_NEEDED
+    acc.expires_hint = reason[:128]
     await session.commit()
     _access_cache.pop(acc.user_id, None)
 

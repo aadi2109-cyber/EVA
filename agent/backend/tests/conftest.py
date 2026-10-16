@@ -4,8 +4,11 @@ Pytest configuration and fixtures for EVA Agent Backend.
 
 from __future__ import annotations
 
+import atexit
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -13,7 +16,10 @@ from httpx import ASGITransport, AsyncClient
 # Set APP_ENV=dev for testing
 os.environ["APP_ENV"] = "dev"
 os.environ["GUARD_TRANSPORT"] = "inprocess"
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test_agent.db"
+# Per-process database so concurrent pytest runs never share (and corrupt) one SQLite file.
+_TEST_DB_DIR = tempfile.mkdtemp(prefix="eva-test-db-")
+atexit.register(shutil.rmtree, _TEST_DB_DIR, ignore_errors=True)
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DB_DIR}/test_agent.db"
 
 # Ensure imports resolve
 ROOT_DIR = Path(__file__).parent.parent.parent.parent

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from typing import Literal
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -51,6 +51,14 @@ class Settings(BaseSettings):
         False, validation_alias=AliasChoices("EVA_FAIL_GUARD_UNREACHABLE", "INJECT_GUARD_UNREACHABLE")
     )
     INJECT_LAYA_TIMEOUT: bool = Field(False, validation_alias=AliasChoices("EVA_FAIL_LAYA_TIMEOUT", "INJECT_LAYA_TIMEOUT"))
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def normalise_sqlite_driver(cls, v: str) -> str:
+        """Accept plain sqlite:/// (as written in doc 03) and use the async driver."""
+        if v.startswith("sqlite:///"):
+            return "sqlite+aiosqlite:///" + v[len("sqlite:///"):]
+        return v
 
     @model_validator(mode="after")
     def validate_security_invariants(self) -> Settings:
