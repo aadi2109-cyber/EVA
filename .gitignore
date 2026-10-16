@@ -22,3 +22,6 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# AgentDojo run logs
+guard/eval/det/agentdojo_runs/

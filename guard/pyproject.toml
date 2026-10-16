@@ -32,6 +32,10 @@ dev = [
     "hypothesis>=6.98.0",
 ]
 
+bench = [
+    "agentdojo>=0.1.35",  # eval/det/agentdojo_bench.py (offline) and agentdojo_live.py (needs an LLM API key)
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["eva_guard"]
 

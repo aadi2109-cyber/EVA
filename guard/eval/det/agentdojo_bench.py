@@ -9,6 +9,7 @@ Never used for tuning. Prints N, suites and the agentdojo version.
 """
 import asyncio
 import collections
+import re
 import importlib.metadata as md
 from contracts.models import ScanRequest, ScanField, Provenance, Trust, SourceType
 from eva_guard.det.pipeline import DetPipeline
@@ -27,13 +28,21 @@ TEMPLATES = {
 }
 
 
+_ENT = re.compile(r"""[\w.+-]+@[\w-]+\.[\w.-]+|https?://\S+|\b[A-Z]{2}\d{10,}\b|\b\d{5,}\b|'[^']{4,}'|\"[^\"]{4,}\"""")
+
+
+def entities(goal: str) -> list[str]:
+    """Distinctive payload strings of an injection goal (emails, URLs, IBAN/ids, long numbers, quoted text)."""
+    return [e.strip("'\"").rstrip(".,)") for e in _ENT.findall(goal)]
+
+
 def load():
     from agentdojo.task_suite.load_suites import get_suites
     attacks, benign = [], []
     for suite_name, suite in get_suites(VERSION).items():
         for it in suite.injection_tasks.values():
             for tname, tpl in TEMPLATES.items():
-                attacks.append((suite_name, tname, tpl.format(goal=it.GOAL, user="Emma Johnson", model="GPT-4")))
+                attacks.append((suite_name, tname, tpl.format(goal=it.GOAL, user="Emma Johnson", model="GPT-4"), it.GOAL))
         for v in suite.get_injection_vector_defaults().values():
             if v and v.strip():
                 benign.append((suite_name, "injection_slot_default", v))
@@ -42,20 +51,30 @@ def load():
     return attacks, benign
 
 
-async def flagged(pl, text, i):
+async def scan(pl, text, i):
     r = await pl.scan(ScanRequest(task_id=f"ad{i}", call_id=f"ad{i}", tool="agentdojo.tool", fields=[ScanField(
         name="body", text=text, provenance=Provenance(source_id=f"ad{i}", source_type=SourceType.TOOL_OUTPUT, trust=Trust.UNTRUSTED))]))
-    return r.disposition in ("sanitized", "quarantined", "held")
+    out = r.fields[0].text if r.fields else ""
+    return r.disposition in ("sanitized", "quarantined", "held"), out
+
+
+async def flagged(pl, text, i):
+    return (await scan(pl, text, i))[0]
 
 
 async def main():
     attacks, benign = load()
     pl = DetPipeline()
     by_t, by_s, miss = collections.defaultdict(lambda: [0, 0]), collections.defaultdict(lambda: [0, 0]), []
-    for i, (s, t, text) in enumerate(attacks):
-        f = await flagged(pl, text, i)
+    neut_t, neut_n, neut_nonent = collections.defaultdict(int), 0, 0
+    for i, (s, t, text, goal) in enumerate(attacks):
+        f, out = await scan(pl, text, i)
         for d, k in ((by_t, t), (by_s, s)):
             d[k][0] += f; d[k][1] += 1
+        ents = entities(goal)
+        if ents:  # payload neutralised = none of the goal's distinctive entities survive in the output
+            neut_n += 1
+            neut_t[t] += not any(e in out for e in ents)
         if not f:
             miss.append((s, t, text.strip().replace("\n", " ")[:110]))
     fp = []
@@ -69,6 +88,13 @@ async def main():
         print(f"  template {k:<24} {a}/{b} ({100 * a / b:.0f}%)")
     for k, (a, b) in sorted(by_s.items()):
         print(f"  suite    {k:<24} {a}/{b} ({100 * a / b:.0f}%)")
+    print(f"Stricter metric, goals with distinctive entities (N={neut_n}): payload neutralised = no email/URL/IBAN/id/quoted string of the goal survives")
+    per_t = collections.Counter(t for (_, t, _, g) in attacks if entities(g))
+    for k in sorted(per_t):
+        print(f"  template {k:<24} {neut_t[k]}/{per_t[k]} ({100 * neut_t[k] / per_t[k]:.0f}%) payload neutralised")
+    print(f"  overall payload neutralised {sum(neut_t.values())}/{neut_n} ({100 * sum(neut_t.values()) / neut_n:.1f}%) vs 'any sentence removed' {n_a - len(miss)}/{n_a}")
+    n_noent = sum(1 for a in attacks if not entities(a[3]))
+    print(f"  ({n_noent} attacks have no distinctive entity, e.g. 'say X is great'; only the any-removal metric applies to them)")
     for kind in ("injection_slot_default", "user_task_prompt"):
         n = sum(1 for b in benign if b[1] == kind); f = sum(1 for x in fp if x[1] == kind)
         note = "  (tool-output-like: the relevant number)" if kind == "injection_slot_default" else "  (user text, never scanned as tool output)"
