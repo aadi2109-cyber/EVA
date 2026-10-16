@@ -14,6 +14,8 @@ uvicorn app.main:app --reload --port 8000
 curl localhost:8000/api/health
 ```
 
+**Python version:** supported range is 3.11+. Code must stay valid on 3.11 (no f-strings that reuse their own quote; `tests/test_py311_compat.py` enforces it when the suite runs on 3.12+).
+
 ### Windows (PowerShell)
 ```powershell
 cd agent\backend
