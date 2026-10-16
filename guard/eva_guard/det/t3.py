@@ -8,6 +8,7 @@ Advisory only:
 - Never decides tool permissions.
 """
 import asyncio
+import concurrent.futures
 import time
 from typing import Literal, Protocol, NamedTuple
 from eva_guard.det.config import DetConfig
@@ -37,6 +38,11 @@ class Tier3Provider(Protocol):
     def is_available(self) -> bool:
         ...
 
+# Shared daemon-ish pool: a hung provider call must never block a scan past its budget.
+# Callers use future.result(timeout=...) and never wait on pool shutdown.
+_T3_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="det-t3")
+
+
 class LayaProvider:
     """
     LAYA typed-decision adapter.
@@ -52,7 +58,12 @@ class LayaProvider:
 
     @property
     def is_available(self) -> bool:
-        return self._available and self.config.t3_enabled
+        if not (self._available and self.config.t3_enabled):
+            return False
+        if not self._loaded:  # cheap probe, no weight loading: is the library installed at all?
+            import importlib.util
+            return importlib.util.find_spec("laya") is not None
+        return True
 
     def _lazy_init(self) -> None:
         if self._loaded or not self.config.t3_enabled:
@@ -132,7 +143,12 @@ class LayaProvider:
             return T3Result(verdict="unavailable", score=None, latency_ms=0.0)
         clipped = sentence[:self.config.t3_max_text_chars]
         start_time = time.perf_counter()
-        res = self._sync_predict(clipped, context)
+        fut = _T3_POOL.submit(self._sync_predict, clipped, context)
+        try:
+            res = fut.result(timeout=self.config.t3_timeout_ms / 1000.0)
+        except Exception:  # timeout or provider error -> conservative 'uncertain'
+            fut.cancel()
+            res = T3Result(verdict="uncertain", score=None)
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
         return T3Result(verdict=res.verdict, score=res.score, latency_ms=elapsed_ms)
 
@@ -162,3 +178,12 @@ class MockTier3Provider:
         if self.delay_ms > 0:
             await asyncio.sleep(self.delay_ms / 1000.0)
         return self.judge_sync(sentence, context, provenance)
+
+
+def create_t3_provider(config: DetConfig | None = None) -> Tier3Provider | None:
+    """Default T3 provider for the Guard facade: LAYA, unless disabled (EVA_T3_ENABLED=0 or config)."""
+    import os
+    config = config or DetConfig()
+    if not config.t3_enabled or os.environ.get("EVA_T3_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
+        return None
+    return LayaProvider(config)

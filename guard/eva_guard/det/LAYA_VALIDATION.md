@@ -1,5 +1,7 @@
 # EVA Guard — LAYA Validation Report & Recommendation
 
+> **Provenance caveat:** the figures below were measured off-box (Windows laptop). They were not reproduced in the Linux CI/dev container, where `laya` is not installed. Timeout / failure handling was re-verified separately with fake providers (`tests/det/test_t3_timeout.py`).
+
 ## 1. Scope & Objective
 - **Component**: EVA Guard Tier 3 Gray-Band Routing (`det/t3.py`).
 - **Target sentences**: Sentences whose T2 `main` score falls within the gray band `[0.30, 0.85)`.

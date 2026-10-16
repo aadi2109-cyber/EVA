@@ -30,9 +30,19 @@ Contract version: 0.1.0 · Last human merge: <time>
     - `LAYA_VALIDATION.md`: Measured CPU validation report and recommendation.
     - `guard/eval/det/run.py`: Benchmark runner (`python -m eval.det.run --split dev|test`).
     - Test suite in `guard/tests/det/`: 21 unit and hypothesis property tests passing.
-- In progress: Slice 2 (H4–H7): T2 model fine-tuning spike, LAYA timeout verification, and CP-A end-to-end integration scenario.
-- Blocked / needs: None. All 66 tests (SEC-1 + SEC-2) passing seamlessly.
-- Next: End-to-end scenario validation (S1 & S5) against `Guard` facade and mock mailbox/workspace environment.
+  - Slice 2: real T2 (ONNX, TF-IDF+LR multi-head, hash-pinned) now actually scores in `OnnxTier2Scorer` (was delegating to interim); main floored by T1, aux floored by rule meta-patterns. `create_t2_scorer` uses it by default.
+  - Fixed: committed ONNX models failed to load without an `en_US.UTF-8` locale (StringNormalizer) -> retrained with lowercasing outside the graph; `eval/train_t2.py` now path-independent.
+  - Fixed: `eval.det.run` read the wrong corpus path and silently used a 12-item fallback; it now runs the real dev/test splits.
+  - Calibration (dev only): `t2_block_threshold=0.60` (separate from T1 `block_threshold`). Dev: P 100% / R 82% / FPR 0%. Test (run once, not tuned): P 100% / R 100% / FPR 0%, p95 < 1 ms. Caveat: test attacks are near-variants of train items, so treat test recall as optimistic.
+  - 71 tests passing.
+  - T3/LAYA timeout verified and fixed: `LayaProvider.judge_sync` (the path the pipeline uses) had no timeout, so a hung LAYA call would stall a scan; the pipeline's async fallback also waited on pool shutdown. Both now bounded by `t3_timeout_ms` via a shared executor; timeout/exception -> `uncertain` -> conservative drop. Tests in `test_t3_timeout.py`.
+  - Paraphrase challenge set `eval/det/challenge.jsonl` (43 items, SEC-1 owned; `--split challenge`). First run, untouched: R 65% / FPR 15%. Added generalizable T1 rules (authority/credential requests, gift-card & "no need to verify" invoice fraud, task-cancel overrides) and meta-discussion patterns -> R 100% / FPR 10% (2 benign at model score ~0.63). The set is now rule-tuned, so it is a regression floor (`test_challenge_set.py`), not an independent measure.
+  - Spec audit (role doc `eva-dev-docs/roles/security-1-content.md`) closed the remaining items: T2 hash now pinned by default (`models/t2.sha256` / `T2_MODEL_SHA256`); T2 scoring batched (64) which cut peak RSS 1.6 GB -> ~96 MB on a 1 MB body and 1 MB scan 5.3 s -> 3.1 s; `eval/det/perf.py` perf report (Xeon 2.8 GHz, 2 threads: ~3-4 ms/KB p50, < 6 ms/KB p95 warm, vs < 15 ms/KB target; cold start ~0.1 s); scenarios S6/S9/S10 (detector side) + hostile-input/1 MB robustness tests; `MODEL_CARD.md` rewritten to describe the actual model (it previously claimed a MiniLM int8 model and third-party datasets); new `KNOWN_LIMITS.md`; LAYA report annotated as off-box/unreproduced.
+  - T3 wired into the `Guard` facade: `Guard(db_url=None, t3_provider=None)`; default `create_t3_provider()` -> `LayaProvider` (off via `EVA_T3_ENABLED=0`). `LayaProvider.is_available` now probes for the `laya` package (was always True), `Guard.health()` reports real `t3_available` and DET p50/p95/escalation metrics (were hardcoded). S9 verified through the facade (`tests/det/test_facade_t3.py`).
+  - 95 tests passing.
+- In progress: none.
+- Blocked / needs (from others): (1) Real LAYA weights are not installed here, so T3 against the real model is untested; install `laya` where S9 is demoed. (2) SEC-2: S6 full path (gateway denies the fetch) and CP-C metrics table use SEC-2's runner; SEC-1 can supply det-only numbers on request. (3) Decision for the human: invest in a fine-tuned int8 encoder (needs model download) or accept TF-IDF baseline + rules; see KNOWN_LIMITS.md.
+- Next: CP-C one-shot `test` report is already recorded in MODEL_CARD.md; re-run only if the model changes.
 
 ## SEC-2
 - Done:

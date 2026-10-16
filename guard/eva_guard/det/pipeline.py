@@ -105,12 +105,13 @@ class DetPipeline:
         if hasattr(self.t3, "judge_sync"):
             return self.t3.judge_sync(text, context, prov)
         try:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(
-                    asyncio.run,
-                    self.t3.judge(text, context, prov)
-                ).result(timeout=self.config.t3_timeout_ms / 1000.0)
+            from eva_guard.det.t3 import _T3_POOL
+            fut = _T3_POOL.submit(asyncio.run, self.t3.judge(text, context, prov))
+            try:
+                return fut.result(timeout=self.config.t3_timeout_ms / 1000.0)
+            except Exception:
+                fut.cancel()
+                raise
         except Exception:
             return T3Result(verdict="uncertain", score=None, latency_ms=0.0)
 
@@ -238,7 +239,7 @@ class DetPipeline:
                         continue
 
                     # Direct T2 block threshold check
-                    if score.main >= self.config.block_threshold:
+                    if score.main >= self.config.t2_block_threshold:
                         malicious_spans.append(span)
                         continue
 

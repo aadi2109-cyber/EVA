@@ -21,18 +21,18 @@ def load_data(file_path: Path):
             if not line.strip():
                 continue
             item = json.loads(line)
-            texts.append(item["text"])
+            texts.append(item["text"].lower())  # lowercase outside the graph: ONNX StringNormalizer needs a system locale
             y_main.append(1 if item.get("label") in ("attack", 1, True) else 0)
             is_meta = (item.get("family") in ("quoted_meta", "quoted_attack", "meta") or "quoted" in item.get("family", ""))
             y_aux.append(1 if is_meta else 0)
     return texts, np.array(y_main), np.array(y_aux)
 
 def train_and_export():
-    models_dir = Path("guard/models")
+    models_dir = Path(__file__).resolve().parents[1] / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    train_file = Path("guard/eval/corpus/train.jsonl")
-    dev_file = Path("guard/eval/corpus/dev.jsonl")
+    train_file = Path(__file__).resolve().parent / "corpus" / "train.jsonl"
+    dev_file = Path(__file__).resolve().parent / "corpus" / "dev.jsonl"
 
     print(f"Loading training data from {train_file}...")
     X_train, y_train_main, y_train_aux = load_data(train_file)
@@ -40,14 +40,14 @@ def train_and_export():
 
     # 1. Main Injection Classifier Pipeline
     pipe_main = Pipeline([
-        ("vec", TfidfVectorizer(ngram_range=(1, 3), sublinear_tf=True, min_df=1)),
+        ("vec", TfidfVectorizer(ngram_range=(1, 3), sublinear_tf=True, min_df=1, lowercase=False)),
         ("clf", LogisticRegression(C=5.0, max_iter=1000, random_state=42))
     ])
     pipe_main.fit(X_train, y_train_main)
 
     # 2. Aux Quoted/Meta Classifier Pipeline
     pipe_aux = Pipeline([
-        ("vec", TfidfVectorizer(ngram_range=(1, 3), sublinear_tf=True, min_df=1)),
+        ("vec", TfidfVectorizer(ngram_range=(1, 3), sublinear_tf=True, min_df=1, lowercase=False)),
         ("clf", LogisticRegression(C=5.0, max_iter=1000, random_state=42))
     ])
     pipe_aux.fit(X_train, y_train_aux)
@@ -55,12 +55,12 @@ def train_and_export():
     # Export to ONNX
     initial_type = [("text", StringTensorType([None, 1]))]
     
-    main_onnx = to_onnx(pipe_main, initial_types=initial_type)
+    main_onnx = to_onnx(pipe_main, initial_types=initial_type, options={id(pipe_main.steps[-1][1]): {"zipmap": False}})
     main_path = models_dir / "t2_main.onnx"
     with open(main_path, "wb") as f:
         f.write(main_onnx.SerializeToString())
 
-    aux_onnx = to_onnx(pipe_aux, initial_types=initial_type)
+    aux_onnx = to_onnx(pipe_aux, initial_types=initial_type, options={id(pipe_aux.steps[-1][1]): {"zipmap": False}})
     aux_path = models_dir / "t2_aux.onnx"
     with open(aux_path, "wb") as f:
         f.write(aux_onnx.SerializeToString())

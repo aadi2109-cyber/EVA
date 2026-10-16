@@ -39,6 +39,10 @@ _OVERRIDE_PATTERNS = [
     re.compile(r"(?i)\bnew\s+(?:system\s+)?instructions?\s*:\s*"),
     re.compile(r"(?i)\bfrom\s+now\s+on[,\s]+you\s+(?:must|should|will)\b"),
     re.compile(r"(?i)\bstop\s+what\s+you\s+are\s+doing\s+and\b"),
+    re.compile(r"(?i)\bset\s+aside\s+(?:whatever|everything|all)\s+(?:you|that)\b"),
+    re.compile(r"(?i)\b(?:earlier|previous|prior|original)\s+task\s+is\s+cancell?ed\b"),
+    re.compile(r"(?i)\bpay\s+no\s+attention\s+to\s+the\s+user"),
+    re.compile(r"(?i)\beverything\s+above\s+is\s+(?:outdated|void|obsolete)\b"),
 ]
 
 _EXFIL_PATTERNS = [
@@ -68,12 +72,18 @@ _HIDDEN_TEXT_PATTERNS = [
 
 _AUTHORITY_PATTERNS = [
     re.compile(r"(?i)(?:^|\n)\s*(?:compliance\s+director|internal\s+affairs|legal\s+department|system\s+architect|security\s+engineer|official\s+admin|antivirus\s+alert|infrastructure\s+team)\s*:", re.MULTILINE),
-    re.compile(r"(?i)\b(?:unannounced\s+audit|without\s+notifying\s+the\s+user|bypass\s+(?:deterministic\s+)?gateway\s+checks|confirm\s+tool\s+execution\s+for\s+[a-zA-Z0-9_.]+\s+without\s+approval)\b"),
+    re.compile(r"(?i)\b(?:unannounced\s+audit|mandatory\s+audit|without\s+notifying\s+the\s+user|bypass\s+(?:deterministic\s+)?gateway\s+checks|confirm\s+tool\s+execution\s+for\s+[a-zA-Z0-9_.]+\s+without\s+approval)\b"),
+    re.compile(r"(?i)\b(?:read|give|share|send|reply\s+with)\s+(?:us\s+|me\s+)?your\s+(?:api\s+)?(?:token|password|credentials|secret)"),
+    re.compile(r"(?i)\bconfirm\s+your\s+credentials\b"),
+    re.compile(r"(?i)\b(?:authori[sz]ed|permitted)\s+you\s+to\s+(?:disable|bypass|turn\s+off)\b|\bdisable\s+the\s+safety\s+checks\b"),
+    re.compile(r"(?i)\bshare\s+.{0,40}\bwith\s+this\s+(?:outside|external)\s+address\b"),
 ]
 
 _INVOICE_FRAUD_PATTERNS = [
     re.compile(r"(?i)\b(?:banking\s+details\s+have\s+changed|new\s+beneficiary\s+account|send\s+all\s+future\s+wire\s+transfers\s+to|re-issue\s+payment\s+for\s+invoice)\b"),
     re.compile(r"(?i)\b(?:iban\s+[a-zA-Z0-9]+|beneficiary\s+account\s+at\s+offshore)\b"),
+    re.compile(r"(?i)\b(?:prepaid\s+)?gift\s+cards?\b.{0,40}\b(?:pay|payment|settle|invoice)|\b(?:pay|payment|settle|invoice)\b.{0,60}\bgift\s+cards?\b"),
+    re.compile(r"(?i)\bno\s+need\s+to\s+(?:verify|confirm)\s+with\b|\bdo\s+not\s+(?:confirm|verify)\s+with\s+the\s+(?:old|previous|usual)\b"),
 ]
 
 _TOOL_MISUSE_PATTERNS = [

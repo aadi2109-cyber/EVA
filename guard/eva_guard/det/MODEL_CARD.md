@@ -1,38 +1,24 @@
-# EVA Guard — T2 Model Card & Selection
+# EVA Guard — T2 Model Card
 
-## 1. Model Overview & Purpose
-- **Component**: EVA Guard Tier 2 Sentence Classifier (`det/t2.py`).
-- **Function**: Multi-head sentence-level classifier operating on CPU (onnxruntime CPUExecutionProvider, int8-quantized).
-  - `main`: Probability that the sentence contains a prompt injection, jailbreak, or unauthorized directive.
-  - `aux`: Probability that the sentence is a quoted, academic, or benign meta-discussion *about* prompt injection or security testing.
-- **Decision Rule**: Sentences with high `main` and high `aux` are retained as benign meta-discussion and audited. Sentences with high `main` and low `aux` are flagged for surgical sanitization.
+## What ships (as of this commit)
+- **Model:** two small linear classifiers, each `TF-IDF (word 1–3-grams, lowercased outside the graph) → LogisticRegression`, exported to ONNX (`guard/models/t2_main.onnx`, `t2_aux.onnx`) and run with `onnxruntime` on CPU (2 intra-op threads, 64-sentence batches).
+  - `main`: injection probability. `aux`: quoted / meta-discussion of attacks.
+- **Not** a fine-tuned transformer and **not** int8-quantized. The earlier MiniLM/BERT-small plan was not executed (no GPU-free download/training budget in this environment); quantization does not apply to this model class.
+- **Licence / provenance:** scikit-learn + skl2onnx (BSD-3), trained only on EVA's own authored corpus (`guard/eval/corpus/train.jsonl`, SEC-2). No third-party datasets or pretrained weights are used. Nothing in this card claims third-party dataset use.
+- **Training:** `python -m eval.train_t2` (run from `guard/` with `PYTHONPATH=..:.`). Train 208 sentences; tuned on `dev` only; `test` was never used for tuning.
+- **Integrity:** SHA-256 of `t2_main.onnx` is pinned in `guard/models/t2.sha256` (override with env `T2_MODEL_SHA256`). Mismatch or load failure ⇒ `tier2_available=false` ⇒ failure-mode policy (fail-closed ⇒ `held`).
 
-## 2. Architecture & Base Model Candidates
+## How the score is used
+`main` is floored by the T1 rule score; `aux` is floored by regex meta-discussion patterns. A sentence is kept (and audited) when `main ≥ 0.50` and `aux ≥ 0.65` (quoted/meta). Otherwise it is removed when `main ≥ t2_block_threshold = 0.60`. Scores in `[t3_band_low, threshold)` go to T3 when a provider is configured.
 
-### Candidate A (Selected Base): `all-MiniLM-L6-v2` / `bert-base-uncased` (DistilBERT/MiniLM architecture)
-- **Parameters**: ~22M to ~66M parameters.
-- **Licence**: **Apache 2.0** (Open, permissive, allows commercial use and redistribution without restrictions).
-- **Inference Profile**: Int8-quantized ONNX model running on CPU with 2 intra-op threads. Average latency < 5 ms per sentence, memory footprint resident < 80 MB.
-- **Multi-Head Structure**:
-  - Linear classification head 1 (`main`): Binary cross-entropy for injection detection.
-  - Linear classification head 2 (`aux`): Binary cross-entropy for quoted/meta detection.
+## Measured results (Xeon 2.8 GHz, CPU only, 2 threads)
+| Split | N | Precision | Recall | FPR | Note |
+|---|---|---|---|---|---|
+| dev | 69 | 100% | 82% | 0% | threshold chosen here |
+| test | 71 | 100% | 100% | 0% | run once; attacks are near-variants of train items, so optimistic |
+| challenge (paraphrases) | 43 | 92% | 100% | 10% | rule-tuned after first run (was R 65% / FPR 15%); regression floor only |
 
-### Candidate B (Interim Scorer): Rule-Weighted Multi-Signal Synthesizer (`InterimTier2Scorer`)
-- **Status**: Shipped in H0–H0.75 behind the exact `Tier2Scorer` interface.
-- **Licence**: Internal EVA MIT/Apache-2.0.
-- **Features**: Synthesizes T1 fast indicators, regex override scoring, role markers, exfiltration patterns, and quotation context without external model dependency.
+Latency: see `python -m eval.det.perf` (≈3–4 ms/KB p50, < 6 ms/KB p95 warm; cold start ≈ 0.1 s; peak RSS ≈ 100 MB incl. 1 MB bodies).
 
-## 3. Dataset Licensing & Governance
-All datasets used for training and dev split evaluation adhere strictly to open-source governance:
-- **Corpus Sources**:
-  - Synthetic and authored enterprise injection/benign examples (Internal EVA corpus).
-  - Open datasets with permissive licences (Apache 2.0 / MIT / CC-BY-4.0):
-    - Lakera Gandalf baseline sets (educational/open research).
-    - SPML / BIPIA datasets (filtered for permissive usage).
-- **Prohibition**: **Zero tuning or training on the `test` split**. The test split is held out for unbiased final evaluation.
-
-## 4. Hardware & Quantization Targets
-- **Runtime Environment**: Developer laptop CPU execution (no GPU required).
-- **Execution Provider**: `onnxruntime.InferenceSession` with `CPUExecutionProvider`.
-- **Quantization**: INT8 dynamic quantization via `optimum` / ONNX runtime tools.
-- **Integrity**: Hash pinned via `T2_MODEL_SHA256`. Startup verification checks model file sha256; mismatch triggers fail-closed `tier2_available=False`.
+## Upgrade path
+Replace with a fine-tuned small encoder (MiniLM-class, Apache-2.0) exported to int8 ONNX behind the unchanged `Tier2Scorer` interface; verify each model and dataset licence on its card first.
