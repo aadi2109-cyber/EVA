@@ -27,3 +27,7 @@ workspace/
 Thumbs.db
 .vscode/
 .idea/
+
+# SEC-2 eval outputs
+guard/eval/results.json
+guard/eval/align/results.json

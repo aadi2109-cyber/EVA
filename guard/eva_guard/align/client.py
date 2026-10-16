@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from typing import Any
 
 from contracts.models import AlignVerdict, TaskPolicy
@@ -31,7 +32,12 @@ class AlignClient:
         self,
         enabled: bool | None = None,
         timeout_ms: int | None = None,
+        backend: Any = None,
     ) -> None:
+        # `backend(original_request, policy, tool, args) -> AlignVerdict` is the swappable
+        # implementation (e.g. a LAYA typed-question client). Default: deterministic heuristic.
+        self._backend = backend or self._heuristic
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="align")
         self.enabled = (
             enabled
             if enabled is not None
@@ -54,11 +60,27 @@ class AlignClient:
         args: dict[str, Any],
     ) -> AlignVerdict:
         """
-        Advisory check comparing proposed tool call against original user request.
+        Advisory check with a hard timeout. Any timeout or backend error -> "unavailable"
+        (the gateway then asks for approval on side effects; ALIGN can never grant ALLOW).
         """
         if not self.enabled:
             return AlignVerdict(verdict="unavailable", score=None)
+        fut = self._pool.submit(self._backend, original_request, policy, tool, args)
+        try:
+            return fut.result(timeout=self.timeout_ms / 1000)
+        except FutureTimeout:
+            logger.warning("ALIGN check timed out (> %s ms)", self.timeout_ms)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ALIGN backend error: %s", e)
+        return AlignVerdict(verdict="unavailable", score=None)
 
+    def _heuristic(
+        self,
+        original_request: str,
+        policy: TaskPolicy | None,
+        tool: str,
+        args: dict[str, Any],
+    ) -> AlignVerdict:
         start_time = time.perf_counter()
         req_lower = original_request.lower()
 

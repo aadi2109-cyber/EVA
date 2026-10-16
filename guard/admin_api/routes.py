@@ -248,3 +248,30 @@ def export_audit():
 def admin_health():
     guard = get_guard_instance()
     return guard.health()
+
+
+def _eval_store():
+    from eval.store import EvalStore
+    # Same DB file as the audit log, so the page reads what this guard instance wrote/sees.
+    return EvalStore(get_guard_instance()._audit.db_path)
+
+
+@router.get("/eval/runs", summary="List Evaluation Runs")
+def list_eval_runs(kind: str | None = Query(None), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    from eval.store import KINDS
+    if kind is not None and kind not in KINDS:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {list(KINDS)}")
+    return _eval_store().list_runs(kind=kind, limit=limit, offset=offset)
+
+
+@router.get("/eval/summary", summary="Eval Page Payload (latest per kind + Baseline/Basic/Full table)")
+def eval_summary():
+    return _eval_store().summary()
+
+
+@router.get("/eval/runs/{run_id}", summary="Evaluation Run Detail (config, versions, failed traces)")
+def get_eval_run(run_id: str):
+    run = _eval_store().get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="eval run not found")
+    return run
