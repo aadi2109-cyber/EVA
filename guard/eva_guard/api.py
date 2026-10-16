@@ -32,6 +32,7 @@ from .align import AlignClient
 from .approvals import ApprovalsEngine
 from .verify import StateVerifier
 from .audit import AuditLogger
+from .store import GuardStore
 
 logger = logging.getLogger("eva_guard")
 
@@ -52,11 +53,17 @@ class Guard:
         self._policy_builder = TaskPolicyBuilder()
         self._gateway = PolicyGateway()
         self._align = AlignClient()
-        self._approvals = ApprovalsEngine()
+        # Durable authority state lives next to the audit log (same SQLite file).
+        self._store = GuardStore(self._audit.db_path)
+        self._approvals = ApprovalsEngine(store=self._store)
         self._verifier = StateVerifier(audit_logger=self._audit)
 
         # In-memory store of active task policies & original requests
         self._policies: dict[str, tuple[TaskPolicy, str]] = {}
+        # A kill switch must survive restarts (never fail open by forgetting it).
+        ks = self._store.get_kill_switch()
+        if ks is not None:
+            self._gateway.set_kill_switch(ks)
 
         # SEC-1's DetPipeline placeholder / dynamic import
         self._det_pipeline: Any = None
@@ -71,12 +78,39 @@ class Guard:
         except (ImportError, AttributeError):
             self._det_pipeline = None
 
+    def _load_policy(self, task_id: str) -> tuple[TaskPolicy, str] | None:
+        hit = self._policies.get(task_id)
+        if hit is None:
+            hit = self._store.get_policy(task_id)
+            if hit is not None:
+                self._policies[task_id] = hit
+        return hit
+
+    def _audit_safe(self, task_id: str, etype: str, actor: str, payload: dict[str, Any]) -> None:
+        try:
+            self._audit.log_event(task_id=task_id, event_type=etype, actor=actor, payload=payload)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Audit failure ({etype}): {e}")
+
+    @staticmethod
+    def _guard_error(text: str) -> CheckActionResponse:
+        return CheckActionResponse(
+            decision="DENY", reasons=[ReasonCode.GUARD_ERROR], reason_text=text,
+            align={"verdict": "unavailable", "score": None}, approval=None,
+            contract_version=CONTRACT_VERSION, event_id="err-guard-failsafe")
+
     def build_task_policy(self, req: BuildPolicyRequest) -> TaskPolicy:
         """
         Builds a sealed TaskPolicy strictly from the user's initial request.
         External retrieved content is NEVER passed into this call.
         """
+        existing = self._load_policy(req.task_id)
+        if existing is not None:
+            # Policies are immutable per task: a repeat/retry returns the stored one and can never widen it.
+            self._audit_safe(req.task_id, "policy.rebuild_ignored", f"user:{req.user_id}", {"origin": existing[0].origin})
+            return existing[0]
         policy = self._policy_builder.build(req)
+        self._store.put_policy(policy, req.user_request)  # raises on failure -> no policy, nothing can run
         self._policies[req.task_id] = (policy, req.user_request)
 
         # Audit policy build event
@@ -139,19 +173,27 @@ class Guard:
         if self._det_pipeline is not None and hasattr(self._det_pipeline, "is_tier2_available"):
             tier2_available = self._det_pipeline.is_tier2_available()
 
-        policy_tuple = self._policies.get(req.task_id)
+        try:
+            policy_tuple = self._load_policy(req.task_id)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Policy store read failed: {e}")
+            return self._guard_error("Policy store unavailable")
         policy = policy_tuple[0] if policy_tuple else None
         original_request = policy_tuple[1] if policy_tuple else None
 
         # Check action through deterministic gateway
-        resp = self._gateway.check(
-            req=req,
-            policy=policy,
-            tier2_available=tier2_available,
-            approvals_engine=self._approvals,
-            align_client=self._align,
-            original_request=original_request,
-        )
+        try:
+            resp = self._gateway.check(
+                req=req,
+                policy=policy,
+                tier2_available=tier2_available,
+                approvals_engine=self._approvals,
+                align_client=self._align,
+                original_request=original_request,
+            )
+        except Exception as e:  # noqa: BLE001 - any internal failure (incl. approval persistence) fails closed
+            logger.error(f"Gateway failure, denying: {e}")
+            return self._guard_error("Internal gateway error")
 
         # Fail-safe audit write: if audit logging fails, DENY the action!
         try:
@@ -186,6 +228,14 @@ class Guard:
         """
         Submits human approval decision bound to the exact action hash.
         """
+        # Approver must be the task owner; anyone else's decision is refused (and recorded).
+        rec = self._approvals._get(approval_id)
+        if rec is not None:
+            pol = self._load_policy(rec["approval"].task_id)
+            if pol is None or pol[0].user_id != req.user_id:
+                self._audit_safe(rec["approval"].task_id, "approval.rejected_wrong_user", f"user:{req.user_id}",
+                                 {"approval_id": approval_id})
+                return SubmitApprovalResponse(status="denied", approval=None, event_id=f"evt-appr-wronguser")
         resp = self._approvals.submit(approval_id, req)
 
         # Audit approval resolution

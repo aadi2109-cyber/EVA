@@ -168,6 +168,8 @@ def set_kill_switch(req: KillSwitchRequest):
         tools=new_tools,
         templates=new_templates,
     )
+    # Persist first: if it cannot be stored, fail loudly rather than appear switched while a restart would forget it.
+    guard._store.put_kill_switch(updated_ks)
     guard._gateway.set_kill_switch(updated_ks)
 
     try:

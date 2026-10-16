@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import logging
 import re
 import sqlite3
@@ -72,7 +73,7 @@ class AuditLogger:
             if db_url and db_url.startswith("sqlite:///"):
                 self.db_path = Path(db_url.replace("sqlite:///", ""))
             else:
-                self.db_path = Path("./guard.db")
+                self.db_path = Path(os.getenv("GUARD_DB_PATH", "./guard.db"))
         else:
             self.db_path = Path(db_path)
 

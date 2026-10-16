@@ -271,7 +271,7 @@ class PolicyGateway:
         if req.approval_id:
             if approvals_engine is not None:
                 is_valid, app_rec, mismatch = approvals_engine.verify_approval(
-                    req.approval_id, req.tool, req.args, action_hash
+                    req.approval_id, req.tool, req.args, action_hash, req.task_id
                 )
                 if not is_valid:
                     if mismatch:

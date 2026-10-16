@@ -26,9 +26,22 @@ class ApprovalsEngine:
     Ensures single-use, expiration, and argument tampering detection.
     """
 
-    def __init__(self, ttl_minutes: int = 10) -> None:
+    def __init__(self, ttl_minutes: int = 10, store: Any = None) -> None:
         self.ttl_minutes = ttl_minutes
+        self._store = store  # optional GuardStore: write-through, lazy load; failures propagate (=> DENY)
         self._approvals: dict[str, dict[str, Any]] = {}
+
+    def _get(self, approval_id: str) -> dict[str, Any] | None:
+        rec = self._approvals.get(approval_id)
+        if rec is None and self._store is not None:
+            rec = self._store.get_approval(approval_id)
+            if rec is not None:
+                self._approvals[approval_id] = rec
+        return rec
+
+    def _persist(self, rec: dict[str, Any]) -> None:
+        if self._store is not None:
+            self._store.put_approval(rec)
 
     def register_approval(self, approval: ApprovalRequest, user_id: str | None = None) -> None:
         self._approvals[approval.approval_id] = {
@@ -40,17 +53,22 @@ class ApprovalsEngine:
             "created_at": datetime.now(timezone.utc),
             "expires_at": approval.expires_at,
         }
+        self._persist(self._approvals[approval.approval_id])
 
     def verify_approval(
-        self, approval_id: str, tool: str, args: dict[str, Any], action_hash: str
+        self, approval_id: str, tool: str, args: dict[str, Any], action_hash: str, task_id: str | None = None
     ) -> tuple[bool, ApprovalRequest | None, bool]:
         """
         Verifies if an approval is valid, approved, not expired, and hash matches.
         Returns: (is_valid, approval_record, is_mismatch)
         """
-        record = self._approvals.get(approval_id)
+        record = self._get(approval_id)
         if not record:
             return False, None, False
+
+        # An approval is bound to the task it was issued for.
+        if task_id is not None and record["approval"].task_id != task_id:
+            return False, record["approval"], True
 
         now = datetime.now(timezone.utc)
         if record["expires_at"] < now:
@@ -67,6 +85,11 @@ class ApprovalsEngine:
 
         # Mark consumed on successful verification (single use)
         record["consumed"] = True
+        try:
+            self._persist(record)
+        except Exception:
+            record["consumed"] = False
+            raise  # cannot prove single use -> caller denies
         return True, record["approval"], False
 
     def submit(self, approval_id: str, req: SubmitApprovalRequest) -> SubmitApprovalResponse:
@@ -74,7 +97,7 @@ class ApprovalsEngine:
         Processes human approval or edits.
         """
         event_id = f"evt-appr-{uuid.uuid4().hex[:8]}"
-        record = self._approvals.get(approval_id)
+        record = self._get(approval_id)
         if not record:
             return SubmitApprovalResponse(
                 status="expired",
@@ -110,6 +133,7 @@ class ApprovalsEngine:
             )
             # Register new and void old
             record["consumed"] = True
+            self._persist(record)
             self.register_approval(new_appr, user_id=req.user_id)
 
             return SubmitApprovalResponse(
@@ -120,6 +144,8 @@ class ApprovalsEngine:
 
         if req.approved:
             record["approved"] = True
+            record["user_id"] = req.user_id
+            self._persist(record)
             return SubmitApprovalResponse(
                 status="approved",
                 approval=record["approval"],
@@ -128,6 +154,7 @@ class ApprovalsEngine:
         else:
             record["approved"] = False
             record["consumed"] = True
+            self._persist(record)
             return SubmitApprovalResponse(
                 status="denied",
                 approval=None,
