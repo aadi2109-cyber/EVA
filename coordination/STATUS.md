@@ -25,7 +25,8 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Backend suite: 119/119 passing.
   - Prompt A: per-process test DB (parallel pytest safe); connector `status` column + migration 002 (replaces expires_hint prefix); plain `sqlite:///` DATABASE_URL accepted; edited-args re-approval e2e test; scenarios S3, S8, S10, S11 added to runner; S13/S14 tested through the admin proxy; admin proxy now takes admin identity from the JWT (X-Admin-User-Id, proposed_by), so four-eyes can't be spoofed.
   - Prompt B: web.fetch SSRF (DNS resolution + IP pinning on every hop); web.search provider interface (mock default/eval, Ollama web-search API); OllamaProvider verified vs published API, fails the task on provider errors (ModelProviderError) with tests; real-Gmail hardening (caps, charsets, depth limits, transient vs revoked, 429/5xx); runbook updated.
-  - Backend suite: 205/205 passing.
+  - FE live-integration fixes: `plan.step` now 0-based with running -> completed|failed (never left running). Guard-side bugs reported to SEC-2 (BE-to-SEC2-02): approval expiry is 2 h not 10 min (gateway.py), `/admin/v1/eval/runs` route missing; both pinned by strict-xfail tests. Answers to FE: BE-to-FE-01. Still open from FE's list: #1 demo model switch (MODEL_PROVIDER=scripted), #2 `tool.output` field name, #6 health p50/p95.
+  - Backend suite: 208 passed + 2 strict xfails.
 - In progress: CP-C robustness (ops/tools work split to other BE teammates).
 - Blocked / needs: None. Real Gmail/OAuth and Docker build not verified (mocked-HTTP tests only). S9 (LAYA timeout on a gray-band sentence) is detector-side: needs SEC-1's DetPipeline. S11 "quoted text not stripped" is only as strong as the detector wired in.
 - Next / known issues: web.search/Ollama never exercised against live services (no key/network here); web.search query is an unpoliced egress channel (see coordination/requests/BE-to-SEC2-01.md); in-process mode admin changes don't reach the in-process Guard instance.
