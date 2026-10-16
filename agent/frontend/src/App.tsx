@@ -29,7 +29,6 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [booting, setBooting] = useState<boolean>(!USE_MOCK && !!getAuthToken());
   const streamRef = useRef<TaskEventStream | null>(null);
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
 
   // Navigation State
@@ -181,7 +180,7 @@ export const App: React.FC = () => {
         }
         break;
 
-      case 'plan.step':
+      case 'plan.step': {
         setSteps((prev) => {
           // A new step starting means every earlier running step has finished.
           const base = prev.map((st) =>
@@ -197,6 +196,7 @@ export const App: React.FC = () => {
         });
         break;
 
+      }
       case 'tool.requested':
         setToolCalls((prev) => [
           ...prev,
@@ -210,7 +210,7 @@ export const App: React.FC = () => {
         ]);
         break;
 
-      case 'guard.decision':
+      case 'guard.decision': {
         setToolCalls((prev) =>
           prev.map((tc) =>
             tc.callId === data.call_id
@@ -252,6 +252,7 @@ export const App: React.FC = () => {
         setTraceItems((prev) => [newTraceDecision, ...prev]);
         break;
 
+      }
       case 'tool.output':
         setToolCalls((prev) =>
           prev.map((tc) =>
@@ -266,7 +267,7 @@ export const App: React.FC = () => {
         );
         break;
 
-      case 'guard.scan':
+      case 'guard.scan': {
         // Add to Live Trace
         const newTraceScan: SecurityTraceItem = {
           id: `trc-scan-${Date.now().toString().slice(-4)}`,
@@ -291,6 +292,7 @@ export const App: React.FC = () => {
         setTraceItems((prev) => [newTraceScan, ...prev]);
         break;
 
+      }
       case 'approval.required':
         setActiveApproval(data.approval);
         break;
@@ -299,7 +301,7 @@ export const App: React.FC = () => {
         setActiveApproval(null);
         break;
 
-      case 'health.degraded':
+      case 'health.degraded': {
         setIsDegraded(true);
         setFailureMode(data.failure_mode || 'fail_closed');
         setDegradedReason(data.reason);
@@ -320,7 +322,8 @@ export const App: React.FC = () => {
         setTraceItems((prev) => [newTraceHealth, ...prev]);
         break;
 
-      case 'state.verified':
+      }
+      case 'state.verified': {
         const newTraceState: SecurityTraceItem = {
           id: `trc-ver-${Date.now().toString().slice(-4)}`,
           seq: traceItems.length + 1,
@@ -341,6 +344,7 @@ export const App: React.FC = () => {
         setTraceItems((prev) => [newTraceState, ...prev]);
         break;
 
+      }
       case 'guard.error':
         setTraceItems((prev) => [
           {
@@ -378,7 +382,6 @@ export const App: React.FC = () => {
   };
 
   const openStream = (taskId: string) => {
-    setActiveTaskId(taskId);
     streamRef.current = new TaskEventStream(
       taskId,
       handleSSEEvent,

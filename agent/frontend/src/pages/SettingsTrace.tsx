@@ -13,7 +13,6 @@ export const SettingsTrace: React.FC<SettingsTraceProps> = ({
 }) => {
   const [activePillar, setActivePillar] = useState<string>('profile');
   const [isTraceVisible, setIsTraceVisible] = useState<boolean>(true);
-  const [policyEnforced, setPolicyEnforced] = useState<boolean>(true);
   const [notification, setNotification] = useState<string | null>(null);
 
   const handleEnforcePolicy = () => {
