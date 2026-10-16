@@ -37,11 +37,11 @@ Contract version: 0.1.0 · Last human merge: <time>
   - 71 tests passing.
   - T3/LAYA timeout verified and fixed: `LayaProvider.judge_sync` (the path the pipeline uses) had no timeout, so a hung LAYA call would stall a scan; the pipeline's async fallback also waited on pool shutdown. Both now bounded by `t3_timeout_ms` via a shared executor; timeout/exception -> `uncertain` -> conservative drop. Tests in `test_t3_timeout.py`.
   - Paraphrase challenge set `eval/det/challenge.jsonl` (43 items, SEC-1 owned; `--split challenge`). First run, untouched: R 65% / FPR 15%. Added generalizable T1 rules (authority/credential requests, gift-card & "no need to verify" invoice fraud, task-cancel overrides) and meta-discussion patterns -> R 100% / FPR 10% (2 benign at model score ~0.63). The set is now rule-tuned, so it is a regression floor (`test_challenge_set.py`), not an independent measure.
-  - 77 tests passing.
-- In progress: nothing blocking SEC-1.
-- Blocked / needs: LAYA numbers in `LAYA_VALIDATION.md` were measured off-box on a Windows laptop; not re-verified here (`laya` is not installed in this environment).
-- Known limits: T2 is a TF-IDF+LR baseline (~200 train samples), so it generalizes weakly beyond corpus phrasing; rules carry much of the recall. int8 quantization does not apply to this model class; it becomes relevant only if a fine-tuned encoder replaces it (needs a model download/GPU-free budget decision). `t2_block_threshold=0.60` trades 2 benign FPs on the challenge set for recall (0.65 would lose 2/34 dev attacks).
-- Next: BE wires `Guard` facade at CP-A; CP-C metrics once SEC-2 runner lands.
+  - Spec audit (role doc `eva-dev-docs/roles/security-1-content.md`) closed the remaining items: T2 hash now pinned by default (`models/t2.sha256` / `T2_MODEL_SHA256`); T2 scoring batched (64) which cut peak RSS 1.6 GB -> ~96 MB on a 1 MB body and 1 MB scan 5.3 s -> 3.1 s; `eval/det/perf.py` perf report (Xeon 2.8 GHz, 2 threads: ~3-4 ms/KB p50, < 6 ms/KB p95 warm, vs < 15 ms/KB target; cold start ~0.1 s); scenarios S6/S9/S10 (detector side) + hostile-input/1 MB robustness tests; `MODEL_CARD.md` rewritten to describe the actual model (it previously claimed a MiniLM int8 model and third-party datasets); new `KNOWN_LIMITS.md`; LAYA report annotated as off-box/unreproduced.
+  - 90 tests passing.
+- In progress: none.
+- Blocked / needs (from others): (1) BE/SEC-2: `Guard` facade builds `DetPipeline()` with no T3 provider, so S9 via the facade needs a provider wired (SEC-1 side is tested with LayaProvider). (2) SEC-2: S6 full path (gateway denies the fetch) and CP-C metrics table use SEC-2's runner; SEC-1 can supply det-only numbers on request. (3) Decision for the human: invest in a fine-tuned int8 encoder (needs model download) or accept TF-IDF baseline + rules; see KNOWN_LIMITS.md.
+- Next: CP-C one-shot `test` report is already recorded in MODEL_CARD.md; re-run only if the model changes.
 
 ## SEC-2
 - Done:

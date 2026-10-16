@@ -1,16 +1,27 @@
 """
 Configuration for DET pipeline components.
 """
+import os
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, Field
 
 _MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 
+
+def _read_pin() -> str | None:
+    """Pinned SHA-256 of the main T2 model: env T2_MODEL_SHA256, else models/t2.sha256."""
+    env = os.environ.get("T2_MODEL_SHA256")
+    if env:
+        return env.strip()
+    f = _MODELS_DIR / "t2.sha256"
+    return f.read_text(encoding="utf-8").strip() if f.exists() else None
+
+
 class DetConfig(BaseModel):
     t2_model_path: str = str(_MODELS_DIR / "t2_main.onnx")
     t2_aux_model_path: str = str(_MODELS_DIR / "t2_aux.onnx")
-    t2_model_sha256: str | None = None  # pin; None = compute only (see models/t2.sha256)
+    t2_model_sha256: str | None = Field(default_factory=lambda: _read_pin())  # T2_MODEL_SHA256; mismatch => tier2 unavailable
     t2_high_risk_threshold: float = 0.85
     t2_meta_min_main: float = 0.50      # main>=this and aux>=min_aux => quoted/meta, keep
     t2_meta_min_aux: float = 0.65

@@ -89,6 +89,8 @@ class OnnxTier2Scorer(Tier2Scorer):
     (the pipeline then applies its configured failure mode).
     The main score is floored by the T1 rule score so rules are never weakened by the model.
     """
+    BATCH_SIZE = 64
+
     def __init__(self, config: DetConfig) -> None:
         self.config = config
         self._main = None
@@ -147,9 +149,12 @@ class OnnxTier2Scorer(Tier2Scorer):
         if not sentences:
             return []
         import numpy as np
-        batch = np.array([[s.lower()] for s in sentences], dtype=object)
-        main = self._positive_probs(self._main, batch)
-        aux = self._positive_probs(self._aux, batch)
+        main: list[float] = []
+        aux: list[float] = []
+        for i in range(0, len(sentences), self.BATCH_SIZE):  # bound peak memory on huge fields
+            batch = np.array([[s.lower()] for s in sentences[i:i + self.BATCH_SIZE]], dtype=object)
+            main += self._positive_probs(self._main, batch)
+            aux += self._positive_probs(self._aux, batch)
         results: list[Score] = []
         for s, m, a in zip(sentences, main, aux):
             if not s.strip():
