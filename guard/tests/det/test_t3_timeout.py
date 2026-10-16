@@ -19,6 +19,7 @@ def _slow_provider(sleep_s=2.0, boom=False):
         time.sleep(sleep_s)
         return T3Result(verdict="benign", score=0.1)
     p._sync_predict = fake
+    p._loaded = True  # skip the 'is laya installed' probe; the model call is faked
     return p
 
 

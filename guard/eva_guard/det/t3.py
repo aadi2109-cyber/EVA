@@ -58,7 +58,12 @@ class LayaProvider:
 
     @property
     def is_available(self) -> bool:
-        return self._available and self.config.t3_enabled
+        if not (self._available and self.config.t3_enabled):
+            return False
+        if not self._loaded:  # cheap probe, no weight loading: is the library installed at all?
+            import importlib.util
+            return importlib.util.find_spec("laya") is not None
+        return True
 
     def _lazy_init(self) -> None:
         if self._loaded or not self.config.t3_enabled:
@@ -173,3 +178,12 @@ class MockTier3Provider:
         if self.delay_ms > 0:
             await asyncio.sleep(self.delay_ms / 1000.0)
         return self.judge_sync(sentence, context, provenance)
+
+
+def create_t3_provider(config: DetConfig | None = None) -> Tier3Provider | None:
+    """Default T3 provider for the Guard facade: LAYA, unless disabled (EVA_T3_ENABLED=0 or config)."""
+    import os
+    config = config or DetConfig()
+    if not config.t3_enabled or os.environ.get("EVA_T3_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
+        return None
+    return LayaProvider(config)

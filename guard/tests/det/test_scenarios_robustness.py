@@ -48,6 +48,7 @@ class _Gray(Tier2Scorer):
 @pytest.mark.asyncio
 async def test_s9_laya_timeout_on_gray_band_drops_sentence_audits_and_completes():
     laya = LayaProvider(DetConfig(t3_timeout_ms=100))
+    laya._loaded = True
     laya._sync_predict = lambda t, c: (time.sleep(1.5), T3Result(verdict="benign"))[1]
     audit = Audit()
     pl = DetPipeline(config=DetConfig(t3_timeout_ms=100), audit=audit, t3=laya, t2_scorer=_Gray())
