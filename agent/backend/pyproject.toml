@@ -12,7 +12,8 @@ dependencies = [
     "uvicorn>=0.28.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.2.0",
-    "sqlalchemy>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "greenlet>=3.0.0",
     "alembic>=1.13.0",
     "aiosqlite>=0.20.0",
     "argon2-cffi>=23.1.0",
@@ -21,6 +22,9 @@ dependencies = [
     "httpx>=0.27.0",
     "structlog>=24.1.0",
     "python-multipart>=0.0.9",
+    # imported by the in-process guard (eva_guard) that the backend loads
+    "pyyaml>=6.0.1",
+    "prometheus-client>=0.20.0",
 ]
 
 [project.optional-dependencies]

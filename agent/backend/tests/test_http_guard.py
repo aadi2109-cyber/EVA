@@ -5,6 +5,7 @@ parity with InProcessGuardClient, auth, timeouts, retry rules, fail-closed behav
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import httpx
@@ -286,3 +287,26 @@ async def test_orchestrator_policy_down_holds_task():
                             user_request="List my files", model_provider=sp, guard_client=client)
     res = await orch.run()
     assert res["status"] == "held"
+
+
+async def test_many_concurrent_http_guard_tasks_complete_without_cross_task_events(http_client):
+    count = 16
+
+    async def run_one(index: int):
+        task_id = _tid()
+        provider = ScriptedProvider()
+        provider.add_final_text(f"done-{index}")
+        orchestrator = TaskOrchestrator(
+            task_id=task_id,
+            user_id=f"parallel-user-{index}-{uuid.uuid4().hex[:6]}",
+            user_role="user",
+            user_request="Say hello",
+            model_provider=provider,
+            guard_client=http_client,
+        )
+        result = await orchestrator.run()
+        return task_id, result
+
+    results = await asyncio.gather(*(run_one(index) for index in range(count)))
+    assert len({task_id for task_id, _ in results}) == count
+    assert all(result["status"] == "completed" for _, result in results)

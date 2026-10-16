@@ -200,16 +200,20 @@ async def get_access_token(user_id: str, session: AsyncSession | None = None) ->
         await mark_reconnect_needed(session, acc, "stored token unreadable")
         raise ReconnectNeeded() from None
 
-    async with google_client() as client:
-        resp = await client.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                "refresh_token": refresh,
-                "grant_type": "refresh_token",
-            },
-        )
+    try:
+        async with google_client() as client:
+            resp = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh,
+                    "grant_type": "refresh_token",
+                },
+            )
+    except httpx.HTTPError as e:
+        # Transient network failure: NOT a revoked grant, so the account is not flagged.
+        raise RuntimeError(f"Google token endpoint unreachable ({type(e).__name__})") from e
     if resp.status_code in (400, 401):
         await mark_reconnect_needed(session, acc, "Google rejected the refresh token")
         raise ReconnectNeeded()

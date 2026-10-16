@@ -33,7 +33,7 @@ from app.db.database import async_session_factory
 from app.db.models import ApprovalIndex, Message, Task, ToolExecution, User
 from app.guard_client.base import GuardClient, GuardDownError, GuardError
 from app.guard_client.factory import get_guard_client
-from app.model.base import ModelEvent, ModelEventType, ModelProvider
+from app.model.base import ModelEvent, ModelEventType, ModelProvider, ModelProviderError
 from app.model.ollama import OllamaProvider
 from app.sse.broadcaster import get_task_broadcaster
 from app.tools.base import ToolContext
@@ -68,6 +68,7 @@ class TaskOrchestrator:
         self.approval_waiter: asyncio.Event = asyncio.Event()
         self.pending_approval_id: str | None = None
         self.pending_approval: Any = None
+        self._plan_step: dict[str, Any] | None = None
         self.approval_decision: SubmitApprovalResponse | None = None
 
         self.sentences_removed: int = 0
@@ -153,28 +154,32 @@ class TaskOrchestrator:
                     return {"status": "cancelled"}
 
                 step_count += 1
-                await broadcaster.emit(
-                    SSEEventType.PLAN_STEP,
-                    {"index": step_count, "title": f"Step {step_count}", "status": "running"},
-                )
+                # plan.step: 0-based index; status running -> completed | failed (see doc 02 §5)
+                await self._open_plan_step(step_count - 1, f"Step {step_count}")
 
                 # Ask the model for the next step
                 tools_spec = tool_registry.to_model_tools()
                 accumulated_text = ""
                 proposed_tool_calls: list[ModelEvent] = []
 
-                async for event in self.model_provider.step(messages, tools=tools_spec):
-                    if self.cancellation_event.is_set():
-                        await self._terminate_task("cancelled")
-                        return {"status": "cancelled"}
+                try:
+                    async for event in self.model_provider.step(messages, tools=tools_spec):
+                        if self.cancellation_event.is_set():
+                            await self._terminate_task("cancelled")
+                            return {"status": "cancelled"}
 
-                    if event.type == ModelEventType.TEXT_DELTA:
-                        accumulated_text += event.text
-                        await broadcaster.emit(SSEEventType.MODEL_DELTA, {"text": event.text})
-                    elif event.type == ModelEventType.TOOL_CALL:
-                        proposed_tool_calls.append(event)
-                    elif event.type == ModelEventType.DONE:
-                        break
+                        if event.type == ModelEventType.TEXT_DELTA:
+                            accumulated_text += event.text
+                            await broadcaster.emit(SSEEventType.MODEL_DELTA, {"text": event.text})
+                        elif event.type == ModelEventType.TOOL_CALL:
+                            proposed_tool_calls.append(event)
+                        elif event.type == ModelEventType.DONE:
+                            break
+                except ModelProviderError as e:
+                    # The model backend failed: fail the task; never treat the error as an answer.
+                    logger.error("Model provider failed: %s", e)
+                    await self._terminate_task("failed", final_text=f"Model unavailable: {e}")
+                    return {"status": "failed", "final_text": f"Model unavailable: {e}"}
 
                 if accumulated_text:
                     final_assistant_text = accumulated_text
@@ -429,6 +434,9 @@ class TaskOrchestrator:
                         except Exception as e:
                             logger.error("State verification failed: %s", e)
 
+                # The model/tool round for this step is done; the next iteration opens the next step.
+                await self._close_plan_step("completed")
+
             # Max steps exceeded
             await self._terminate_task("completed", final_text=final_assistant_text or "Task reached maximum execution steps.")
             return {"status": "completed", "final_text": final_assistant_text}
@@ -504,7 +512,21 @@ class TaskOrchestrator:
             session.add(exec_rec)
             await session.commit()
 
+    async def _open_plan_step(self, index: int, title: str) -> None:
+        broadcaster = await get_task_broadcaster(self.task_id)
+        self._plan_step = {"index": index, "title": title}
+        await broadcaster.emit(SSEEventType.PLAN_STEP, {**self._plan_step, "status": "running"})
+
+    async def _close_plan_step(self, status: str) -> None:
+        """Emit the terminal status for the open step, once."""
+        step, self._plan_step = self._plan_step, None
+        if step is not None:
+            broadcaster = await get_task_broadcaster(self.task_id)
+            await broadcaster.emit(SSEEventType.PLAN_STEP, {**step, "status": status})
+
     async def _terminate_task(self, terminal_status: str, final_text: str = "") -> None:
+        # Never leave a step "running" behind the terminal event.
+        await self._close_plan_step("completed" if terminal_status == "completed" else "failed")
         broadcaster = await get_task_broadcaster(self.task_id)
         summary = {
             "sentences_removed": self.sentences_removed,

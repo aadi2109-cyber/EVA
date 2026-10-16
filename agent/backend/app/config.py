@@ -6,14 +6,20 @@ Enforces hard security invariants at boot time.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Literal
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_ENV_DIR = Path(__file__).resolve().parents[3] / "env"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env", "../../env/.env.example"),
+        # Later files override earlier ones; real process env vars override all files.
+        # Resolved from this file, not the CWD: defaults < env/.env (git-ignored secrets) < ./.env.
+        env_file=(str(_ENV_DIR / ".env.example"), str(_ENV_DIR / ".env"), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -37,7 +43,10 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
-    OLLAMA_MODEL: str = "llama3.1"
+    OLLAMA_MODEL: str = "gpt-oss:20b"
+
+    # web.search backend: "mock" (default; always used in eval) or "ollama" (Ollama web-search API)
+    WEB_SEARCH_PROVIDER: Literal["mock", "ollama"] = "mock"
 
     GUARD_TRANSPORT: Literal["inprocess", "http"] = "inprocess"
     GUARD_SERVICE_URL: str = "http://localhost:8100"
@@ -77,6 +86,9 @@ class Settings(BaseSettings):
                 f"EVA_FAIL_* failure-injection flags are forbidden when APP_ENV='{self.APP_ENV}'. "
                 f"They are only permitted when APP_ENV='eval'."
             )
+
+        if self.APP_ENV == "eval" and self.WEB_SEARCH_PROVIDER != "mock":
+            raise ValueError("WEB_SEARCH_PROVIDER must be 'mock' when APP_ENV='eval' (mock web only).")
 
         # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock
         if self.APP_ENV == "eval" and self.GMAIL_MODE == "real":
