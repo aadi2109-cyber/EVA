@@ -99,6 +99,18 @@ class FilesReadArgs(BaseModel):
     path: str = Field(..., description="Relative path of file to read")
 
 
+def _resolve_mock_workspace() -> Path:
+    candidates = [
+        Path("env/mock/workspace"),
+        Path(__file__).resolve().parents[4] / "env" / "mock" / "workspace",
+        Path(__file__).resolve().parents[3] / "env" / "mock" / "workspace",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return Path("env/mock/workspace")
+
+
 class FilesReadTool:
     name = "files.read"
     description = "Read the content of a file in the user's sandboxed workspace."
@@ -113,7 +125,8 @@ class FilesReadTool:
 
         if not target.exists() or not target.is_file():
             # In mock mode, if file not yet copied to user sandbox, check env/mock/workspace
-            mock_file = Path("env/mock/workspace") / validated.path.lstrip("/\\")
+            mock_ws = _resolve_mock_workspace()
+            mock_file = mock_ws / validated.path.lstrip("/\\")
             if mock_file.exists() and mock_file.is_file():
                 content = mock_file.read_text(encoding="utf-8", errors="replace")
                 target = mock_file
@@ -181,7 +194,7 @@ class FilesSearchTool:
 
         # Also search env/mock/workspace if matches empty
         if not matches:
-            mock_ws = Path("env/mock/workspace")
+            mock_ws = _resolve_mock_workspace()
             if mock_ws.exists():
                 for p in mock_ws.rglob("*"):
                     if p.is_file():

@@ -109,9 +109,12 @@ class WebFetchTool:
 
         # In APP_ENV=eval or when target is mock web server, serve local mock pages
         if settings.APP_ENV == "eval" or "mock" in validated.url or "localhost" in validated.url or "example.com" in validated.url:
-            mock_web_dir = Path("env/mock/web")
-            if not mock_web_dir.exists():
-                mock_web_dir = Path(__file__).parent.parent.parent.parent / "env" / "mock" / "web"
+            candidates = [
+                Path("env/mock/web"),
+                Path(__file__).resolve().parents[4] / "env" / "mock" / "web",
+                Path(__file__).resolve().parents[3] / "env" / "mock" / "web",
+            ]
+            mock_web_dir = next((c for c in candidates if c.exists()), Path("env/mock/web"))
 
             target_filename = "attacker.html" if "attacker" in validated.url else "index.html"
             mock_file = mock_web_dir / target_filename

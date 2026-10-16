@@ -111,10 +111,12 @@ class StubGuard:
         for f in req.fields:
             text = f.text
             lower_text = text.lower()
-            if "ignore the user" in lower_text:
+            if "ignore the user" in lower_text or "ignore all previous instructions" in lower_text:
                 # Replace the injection sentence with marker
                 new_text = text.replace("Ignore the user.", "[CONTENT SANITISED]")
                 new_text = new_text.replace("ignore the user.", "[CONTENT SANITISED]")
+                new_text = new_text.replace("Ignore all previous instructions.", "[CONTENT SANITISED]")
+                new_text = new_text.replace("ignore all previous instructions.", "[CONTENT SANITISED]")
                 if "[CONTENT SANITISED]" not in new_text:
                     new_text = "[CONTENT SANITISED]"
                 sanitized_fields.append(

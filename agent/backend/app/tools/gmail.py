@@ -54,15 +54,17 @@ def extract_html_text_with_hidden(html_content: str) -> str:
 
 
 def _load_mock_mailbox() -> list[dict[str, Any]]:
-    mailbox_path = Path("env/mock/mailbox.json")
-    if not mailbox_path.exists():
-        # Fallback to absolute or relative
-        mailbox_path = Path(__file__).parent.parent.parent.parent / "env" / "mock" / "mailbox.json"
-    if mailbox_path.exists():
-        try:
-            return json.loads(mailbox_path.read_text(encoding="utf-8"))
-        except Exception:
-            return []
+    candidates = [
+        Path("env/mock/mailbox.json"),
+        Path(__file__).resolve().parents[4] / "env" / "mock" / "mailbox.json",
+        Path(__file__).resolve().parents[3] / "env" / "mock" / "mailbox.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                return []
     return []
 
 
