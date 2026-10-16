@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 class HttpGuardClient:
     """Interacts with the EVA Guard standalone HTTP service."""
 
+    @property
+    def implementation(self) -> str:
+        return f"http:{self.base_url}"
+
     def __init__(
         self,
         base_url: str | None = None,
