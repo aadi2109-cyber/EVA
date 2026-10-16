@@ -118,6 +118,7 @@ class ConnectorAccount(Base):
     user_id: Mapped[str] = mapped_column(String(64), ForeignKey("users.id"), index=True, nullable=False)
     provider: Mapped[str] = mapped_column(String(32), default="gmail", nullable=False)
     account_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    account_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
     encrypted_refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     scopes: Mapped[str] = mapped_column(String(512), nullable=False)
     expires_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)

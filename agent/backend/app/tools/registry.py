@@ -11,6 +11,7 @@ from app.tools.base import Tool
 from app.tools.files import FilesListTool, FilesReadTool, FilesSearchTool, FilesWriteTool
 from app.tools.gmail import GmailDraftTool, GmailReadTool, GmailSearchTool, GmailSendTool
 from app.tools.messages import MessagesHistoryTool, MessagesSendTool
+from app.tools.telegram import TelegramHistoryTool, TelegramReadTool, TelegramSendTool
 from app.tools.web import WebFetchTool, WebSearchTool
 
 
@@ -33,6 +34,9 @@ class ToolRegistry:
             WebFetchTool(),
             MessagesHistoryTool(),
             MessagesSendTool(),
+            TelegramReadTool(),
+            TelegramHistoryTool(),
+            TelegramSendTool(),
         ]
         for tool in defaults:
             self.register(tool)

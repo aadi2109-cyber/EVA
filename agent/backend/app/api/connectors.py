@@ -71,7 +71,20 @@ async def list_connectors(
             "expires_hint": "Connect via Google OAuth",
         }
 
-    return [gmail_info]
+    from app.connectors.telegram import telegram_connector
+    telegram_info = await telegram_connector.get_status(current_user.id, session)
+
+    return [gmail_info, telegram_info]
+
+
+@router.delete("/api/connectors/telegram")
+async def disconnect_telegram(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, str]:
+    from app.connectors.telegram import telegram_connector
+    await telegram_connector.unlink_account(current_user.id, session)
+    return {"status": "disconnected", "provider": "telegram"}
 
 
 @router.get("/api/connectors/gmail/auth-url")

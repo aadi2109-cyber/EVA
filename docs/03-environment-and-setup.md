@@ -88,20 +88,30 @@ DEFAULT_FAILURE_MODE=fail_closed
 - `env/mock/mailbox.json` — ~30 benign emails (invoices, meetings, newsletters) + labelled attack emails (SEC-2 supplies attack texts).
 - `env/mock/workspace/` — sample files incl. a poisoned document.
 - `env/mock/web/` — local pages served by a mock web server, some poisoned; `web.fetch/search` in `APP_ENV=eval` route here only.
-- `env/mock/state.py` — observable state used by `verify_state`: sent mail, drafts, files + hashes, outbound HTTP log.
+- `env/mock/web/` — local pages served by a mock web server, some poisoned; `web.fetch/search` in `APP_ENV=eval` route here only.
+- `env/mock/state.py` — observable state used by `verify_state`: sent mail, drafts, files + hashes, outbound HTTP log, and mock Telegram message store (`mock_telegram_messages`, `mock_telegram_sent`).
 - Reset command: `python -m env.mock.reset` returns everything to the seed state between runs.
 
-## 7. Run commands (every role file repeats the ones that apply)
+## 7. Run commands (Runbook)
 
 ```
-# backend
-cd agent/backend && uv sync && uv run alembic upgrade head && uv run uvicorn app.main:app --reload --port 8000
+# backend migrations
+cd agent/backend && alembic upgrade head
+
+# backend server
+cd agent/backend && uvicorn app.main:app --reload --port 8000
+
 # guard service
-cd guard && uv sync && uv run uvicorn service.main:app --reload --port 8100
+cd guard && uvicorn service.main:app --reload --port 8100
+
 # frontend
 cd agent/frontend && pnpm install && pnpm dev
-# everything
-docker compose -f env/docker-compose.yml up --build
+
 # tests
-cd agent/backend && uv run pytest ; cd guard && uv run pytest ; cd agent/frontend && pnpm test
+pytest -c guard/pyproject.toml guard/tests
+pytest -c agent/backend/pyproject.toml agent/backend/tests
 ```
+
+### Telegram Connector Setup & Operation
+- Set `TELEGRAM_MODE=mock` in development and testing. In mock mode, the connector operates against `env/mock/state.py` without outbound network access.
+- For future live mode (`TELEGRAM_MODE=real`), configure `TELEGRAM_BOT_TOKEN` in `.env` and configure target chat IDs in `TELEGRAM_ALLOWLIST`. All `telegram.send` operations still require exact human approval through EVA.

@@ -11,6 +11,7 @@ allowed_destinations:
 prohibited_side_effects:
   - gmail.send
   - messages.send
+  - telegram.send
 approval_required_for:
   - files.write
 minimum_detector_posture: tier2_required
