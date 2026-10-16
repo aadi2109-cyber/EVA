@@ -30,9 +30,9 @@ Contract version: 0.1.0 · Last human merge: <time>
     - `LAYA_VALIDATION.md`: Measured CPU validation report and recommendation.
     - `guard/eval/det/run.py`: Benchmark runner (`python -m eval.det.run --split dev|test`).
     - Test suite in `guard/tests/det/`: 21 unit and hypothesis property tests passing.
-- In progress: Merged SEC-2 deliverables (contracts v0.1.0, Guard facade, eval corpus v1); integrating with `Guard.scan_tool_result`.
-- Blocked / needs: None.
-- Next: CP-A (H4) integration verifying scenario S1 and S5 end-to-end through `eva_guard.Guard`; benchmark on SEC-2's 348-item corpus.
+- In progress: Slice 2 (H4–H7): T2 model fine-tuning spike, LAYA timeout verification, and CP-A end-to-end integration scenario.
+- Blocked / needs: None. All 66 tests (SEC-1 + SEC-2) passing seamlessly.
+- Next: End-to-end scenario validation (S1 & S5) against `Guard` facade and mock mailbox/workspace environment.
 
 ## SEC-2
 - Done:
