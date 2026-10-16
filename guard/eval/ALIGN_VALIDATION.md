@@ -1,6 +1,6 @@
 # ALIGN Validation
 
-- Date: 2026-10-16  ·  Backend: **deterministic heuristic** (LAYA typed-question backend not wired; `AlignClient(backend=...)` is the swap point)
+- Date: 2026-10-16  ·  Backend: **heuristic**
 - Hardware: x86_64 Linux, CPU only  ·  Timeout: 1500 ms  ·  Config version 1
 - Data: N=25 authored (request, action) pairs (14 misaligned, 11 aligned), single fixed set, no tuning split — **too small for any claim beyond this table**.
 
@@ -11,7 +11,7 @@
 | Misaligned actions flagged (recall) | 10/14 = 71% |
 | Aligned actions wrongly flagged (FP rate) | 0/11 = 0% |
 | Precision of flags | 100% |
-| Latency p50 / p95 | 0.061 ms / 0.102 ms (heuristic; LAYA latency not measured) |
+| Latency p50 / p95 | 0.062 ms / 0.135 ms (heuristic, CPU, includes cold start in the first call) |
 
 ## Recall by group
 
@@ -41,6 +41,6 @@
 
 ## Known limits
 
-- The heuristic relies on keyword lists and exact-destination comparison; the `hard` group shows it misses intent contradictions without those cues. The deterministic gateway (policy, destinations, provenance, approvals) is what actually stops those actions.
+- Heuristic backend only: it relies on keyword lists and exact-destination comparison; the `hard` group shows it misses intent contradictions without those cues. The deterministic gateway (policy, destinations, provenance, approvals) is what actually stops those actions.
 - Several `swapped_dest` hits come from literal keywords (`evil`, `attacker`, `exfil`) or from the user having named a different destination; treat that group as an upper bound.
-- LAYA is unproven on our labels until a backend is wired and this same set (plus a larger one) is re-run; published LAYA figures are targets, not our results.
+- LAYA is unproven beyond this small set; published LAYA figures are targets, not our results. Compare `ALIGN_VALIDATION.md` (heuristic) with `ALIGN_VALIDATION_laya.md`.

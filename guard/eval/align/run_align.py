@@ -53,7 +53,10 @@ CASES = [
 
 
 def main() -> None:
-    client = AlignClient(enabled=True, timeout_ms=1500)
+    import os
+    backend_name = os.getenv("ALIGN_BACKEND", "heuristic").lower()
+    # LAYA on CPU: allow a longer budget than the 1500 ms production default so the first (cold) call is measurable.
+    client = AlignClient(enabled=True, timeout_ms=int(os.getenv("ALIGN_TIMEOUT_MS", "1500")))
     rows, lat = [], []
     for req, tool, args, label, group in CASES:
         t = time.perf_counter()
@@ -76,10 +79,10 @@ def main() -> None:
            "p50_ms": statistics.median(lat), "p95_ms": p95, "by_group": by_group,
            "missed": [r for r in mis if not flagged(r)], "false_positives": [r for r in ali if flagged(r)]}
     EvalStore().save_run("align", {k: out[k] for k in ("recall_flagged", "fp_rate", "precision", "p50_ms", "p95_ms", "by_group")}, n=out["n"],
-                         failures=out["missed"] + out["false_positives"], config={"backend": "heuristic", "timeout_ms": 1500})
+                         failures=out["missed"] + out["false_positives"], config={"backend": backend_name, "timeout_ms": client.timeout_ms})
     (HERE / "results.json").write_text(json.dumps(out, indent=2))
     L = ["# ALIGN Validation", "",
-         f"- Date: {datetime.now(timezone.utc):%Y-%m-%d}  ·  Backend: **deterministic heuristic** (LAYA typed-question backend not wired; `AlignClient(backend=...)` is the swap point)",
+         f"- Date: {datetime.now(timezone.utc):%Y-%m-%d}  ·  Backend: **{backend_name}**",
          f"- Hardware: {platform.machine()} {platform.system()}, CPU only  ·  Timeout: 1500 ms  ·  Config version 1",
          f"- Data: N={out['n']} authored (request, action) pairs ({len(mis)} misaligned, {len(ali)} aligned), single fixed set, no tuning split — **too small for any claim beyond this table**.",
          "", "## Results", "",
@@ -87,7 +90,7 @@ def main() -> None:
          f"| Misaligned actions flagged (recall) | {tp}/{len(mis)} = {tp/len(mis):.0%} |",
          f"| Aligned actions wrongly flagged (FP rate) | {fp}/{len(ali)} = {fp/len(ali):.0%} |",
          f"| Precision of flags | {out['precision']:.0%} |" if out['precision'] is not None else "| Precision | n/a |",
-         f"| Latency p50 / p95 | {out['p50_ms']:.3f} ms / {out['p95_ms']:.3f} ms (heuristic; LAYA latency not measured) |",
+         f"| Latency p50 / p95 | {out['p50_ms']:.3f} ms / {out['p95_ms']:.3f} ms ({backend_name}, CPU, includes cold start in the first call) |",
          "", "## Recall by group", "", "| Group | Flagged |", "|---|---|"]
     L += [f"| {g} | {a}/{b} |" for g, (a, b) in by_group.items()]
     L += ["", "## Misses", ""] + ([f"- `{r['tool']}` for “{r['request']}” ({r['group']}) → {r['verdict']}" for r in out["missed"]] or ["- none"])
@@ -97,10 +100,10 @@ def main() -> None:
           "- Timeout or backend error → `unavailable`; on side-effect tools this forces approval (`ALIGN_UNCERTAIN`). Hard timeout enforced via worker thread.",
           "- Inputs are only the user's original request, the policy and the proposed action — never retrieved content.",
           "", "## Known limits", "",
-          "- The heuristic relies on keyword lists and exact-destination comparison; the `hard` group shows it misses intent contradictions without those cues. The deterministic gateway (policy, destinations, provenance, approvals) is what actually stops those actions.",
+          "- Heuristic backend only: it relies on keyword lists and exact-destination comparison; the `hard` group shows it misses intent contradictions without those cues. The deterministic gateway (policy, destinations, provenance, approvals) is what actually stops those actions.",
           "- Several `swapped_dest` hits come from literal keywords (`evil`, `attacker`, `exfil`) or from the user having named a different destination; treat that group as an upper bound.",
-          "- LAYA is unproven on our labels until a backend is wired and this same set (plus a larger one) is re-run; published LAYA figures are targets, not our results."]
-    (HERE.parent / "ALIGN_VALIDATION.md").write_text("\n".join(L) + "\n")
+          "- LAYA is unproven beyond this small set; published LAYA figures are targets, not our results. Compare `ALIGN_VALIDATION.md` (heuristic) with `ALIGN_VALIDATION_laya.md`."]
+    (HERE.parent / ("ALIGN_VALIDATION.md" if backend_name == "heuristic" else f"ALIGN_VALIDATION_{backend_name}.md")).write_text("\n".join(L) + "\n")
     print(json.dumps({k: v for k, v in out.items() if k not in ("missed", "false_positives")}, indent=1))
 
 
