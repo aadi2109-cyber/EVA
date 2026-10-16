@@ -67,6 +67,7 @@ class TaskOrchestrator:
         self.cancellation_event = asyncio.Event()
         self.approval_waiter: asyncio.Event = asyncio.Event()
         self.pending_approval_id: str | None = None
+        self.pending_approval: Any = None
         self.approval_decision: SubmitApprovalResponse | None = None
 
         self.sentences_removed: int = 0
@@ -265,6 +266,7 @@ class TaskOrchestrator:
 
                         approval_req = decision_resp.approval
                         self.pending_approval_id = approval_req.approval_id
+                        self.pending_approval = approval_req
                         self.approval_waiter.clear()
 
                         # Record approval in DB
@@ -284,14 +286,18 @@ class TaskOrchestrator:
                         if not self.approval_decision or not self.approval_decision.status == "approved":
                             await broadcaster.emit(
                                 SSEEventType.APPROVAL_RESOLVED,
-                                {"approval_id": approval_req.approval_id, "status": "denied"},
+                                {"approval_id": (self.pending_approval or approval_req).approval_id, "status": "denied"},
                             )
                             messages.append({"role": "user", "content": f"<tool_output tool='{tool_name}' status='denied'>Human user denied this action.</tool_output>"})
                             continue
 
+                        # The user may have edited args (re-approval): the approved
+                        # approval is then the latest one and carries the exact args.
+                        approved_req = self.pending_approval or approval_req
+                        approved_args = (approved_req.exact_action or {}).get("args", tool_args)
                         await broadcaster.emit(
                             SSEEventType.APPROVAL_RESOLVED,
-                            {"approval_id": approval_req.approval_id, "status": "approved"},
+                            {"approval_id": approved_req.approval_id, "status": "approved"},
                         )
 
                         # Re-validate with approved approval_id
@@ -299,16 +305,17 @@ class TaskOrchestrator:
                             task_id=self.task_id,
                             call_id=call_id,
                             tool=tool_name,
-                            args=tool_args,
+                            args=approved_args,
                             arg_provenance=arg_prov,
                             read_only=read_only,
-                            approval_id=approval_req.approval_id,
+                            approval_id=approved_req.approval_id,
                         )
                         recheck_resp = await self.guard.check_action(recheck_req)
                         if recheck_resp.decision != "ALLOW":
                             self.actions_denied += 1
                             messages.append({"role": "user", "content": f"<tool_output tool='{tool_name}' status='denied'>Approval re-validation failed: {recheck_resp.reason_text}</tool_output>"})
                             continue
+                        tool_args = approved_args
 
                     # Case 3: ALLOW -> Run Tool
                     tool = tool_registry.get(tool_name)

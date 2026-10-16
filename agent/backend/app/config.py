@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from typing import Literal
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,9 +46,11 @@ class Settings(BaseSettings):
     MAX_STEPS: int = 12
 
     # Failure injection hooks (only active when APP_ENV=eval)
-    INJECT_TIER2_DOWN: bool = False
-    INJECT_GUARD_UNREACHABLE: bool = False
-    INJECT_LAYA_TIMEOUT: bool = False
+    INJECT_TIER2_DOWN: bool = Field(False, validation_alias=AliasChoices("EVA_FAIL_TIER2_DOWN", "INJECT_TIER2_DOWN"))
+    INJECT_GUARD_UNREACHABLE: bool = Field(
+        False, validation_alias=AliasChoices("EVA_FAIL_GUARD_UNREACHABLE", "INJECT_GUARD_UNREACHABLE")
+    )
+    INJECT_LAYA_TIMEOUT: bool = Field(False, validation_alias=AliasChoices("EVA_FAIL_LAYA_TIMEOUT", "INJECT_LAYA_TIMEOUT"))
 
     @model_validator(mode="after")
     def validate_security_invariants(self) -> Settings:
@@ -57,6 +59,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"GUARD_PROFILE='{self.GUARD_PROFILE}' is forbidden when APP_ENV='{self.APP_ENV}'. "
                 f"Only 'full' is permitted outside 'eval'."
+            )
+
+        # Failure-injection flags are refused outside eval (never silently honoured)
+        if self.APP_ENV != "eval" and (
+            self.INJECT_TIER2_DOWN or self.INJECT_GUARD_UNREACHABLE or self.INJECT_LAYA_TIMEOUT
+        ):
+            raise ValueError(
+                f"EVA_FAIL_* failure-injection flags are forbidden when APP_ENV='{self.APP_ENV}'. "
+                f"They are only permitted when APP_ENV='eval'."
             )
 
         # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock

@@ -21,10 +21,11 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Achieved Gate G1: full loop on StubGuard + ScriptedProvider + SSE.
   - Achieved Checkpoint CP-A: injected-email scenario S1 passes end to end with real guard facade; S2, S4, S4 approval flow, S7, and S12 scenarios verified and passing.
   - Full test suite passing: 22/22 tests passing in `agent/backend/tests/`.
-- In progress:
-  - Checkpoint CP-B readiness: Real Gmail OAuth integration hardening, failure injection hook verification, and HTTP guard service parity.
-- Blocked / needs: None (OAuth credentials optional; running GMAIL_MODE=mock).
-- Next: Checkpoint CP-B demo scenario validations and integration with FE.
+  - CP-B work: HttpGuardClient parity tests vs guard service, approvals e2e (S4) incl. edited-args re-approval, admin proxy, SSE Last-Event-ID replay (auth added), web tool hardening, Gmail mock/real backend parity + OAuth hardening, failure-injection hooks (EVA_FAIL_*), eval CLI + reset, Dockerfile/.env.example/compose, docs/RUNBOOK-backend.md.
+  - Backend suite: 119/119 passing.
+- In progress: CP-C robustness.
+- Blocked / needs: None. Real Gmail/OAuth and Docker build not verified here (mocked-HTTP tests only).
+- Next / known issues: S6 runner hangs (auto_deny polls ~3s); tests share ./test_agent.db (run one pytest at a time); web.search is simulated; SSRF check is hostname-only; reconnect flag stored in expires_hint (needs status column migration).
 
 ## SEC-1
 - Done:

@@ -12,6 +12,11 @@ from app.config import settings
 
 def _get_fernet() -> Fernet:
     key = settings.TOKEN_ENC_KEY
+    if settings.APP_ENV == "prod":
+        # Production requires a real Fernet key (Fernet.generate_key()); no silent fallbacks.
+        if not key:
+            raise ValueError("TOKEN_ENC_KEY must be set when APP_ENV=prod")
+        return Fernet(key.encode("utf-8"))
     if not key:
         # Default dev key (32 url-safe base64 bytes)
         key = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="

@@ -7,65 +7,25 @@ Extracts hidden HTML text (display:none, zero-size, comments) so security scanne
 
 from __future__ import annotations
 
-import json
-import re
-from pathlib import Path
 from typing import Any
 from pydantic import BaseModel, Field
 
 from contracts.models import Provenance, ScanField, SourceType, Trust
 from app.config import settings
 from app.tools.base import ToolContext, ToolExecutionResult
+from app.tools.gmail_backend import get_backend, load_mock_mailbox as _load_mock_mailbox  # noqa: F401
+from app.tools.htmltext import extract_html, extract_html_text_with_hidden  # noqa: F401  (re-exported)
 from env.mock.state import state as mock_state
 
 
-def extract_html_text_with_hidden(html_content: str) -> str:
-    """
-    Extract visible and hidden text from HTML.
-    Ensures hidden elements (display:none, visibility:hidden, font-size:0, comments)
-    are captured into the text string so the security scanner sees them.
-    """
-    if not html_content:
-        return ""
-
-    # Extract HTML comments as text
-    comments = re.findall(r"<!--(.*?)-->", html_content, re.DOTALL)
-    comment_text = "\n".join([c.strip() for c in comments if c.strip()])
-
-    # Find hidden elements
-    hidden_blocks = re.findall(
-        r"""<[^>]+style\s*=\s*['"][^'"]*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)[^'"]*['"][^>]*>(.*?)</[^>]+>""",
-        html_content,
-        re.DOTALL | re.IGNORECASE,
-    )
-    hidden_text = "\n".join([re.sub(r"<[^>]+>", " ", h).strip() for h in hidden_blocks if h.strip()])
-
-    # Strip tags for general text
-    clean_text = re.sub(r"<[^>]+>", " ", html_content)
-    clean_text = re.sub(r"\s+", " ", clean_text).strip()
-
-    combined_parts = [clean_text]
-    if comment_text:
-        combined_parts.append(f"[HTML_COMMENT: {comment_text}]")
-    if hidden_text:
-        combined_parts.append(f"[HIDDEN_TEXT: {hidden_text}]")
-
-    return "\n\n".join(combined_parts)
-
-
-def _load_mock_mailbox() -> list[dict[str, Any]]:
-    candidates = [
-        Path("env/mock/mailbox.json"),
-        Path(__file__).resolve().parents[4] / "env" / "mock" / "mailbox.json",
-        Path(__file__).resolve().parents[3] / "env" / "mock" / "mailbox.json",
-    ]
-    for p in candidates:
-        if p.exists():
-            try:
-                return json.loads(p.read_text(encoding="utf-8"))
-            except Exception:
-                return []
-    return []
+def compose_body(plain: str, html: str) -> str:
+    """Single text body for scanning. Hidden HTML text/comments are kept (labelled), never dropped."""
+    if html and not plain:
+        return extract_html(html).render()
+    if html and plain:
+        hidden = extract_html(html).hidden_only()
+        return f"{plain}\n\n{hidden}" if hidden else plain
+    return plain
 
 
 # ------------------------------------------------------------------------------
@@ -86,27 +46,7 @@ class GmailSearchTool:
 
     async def run(self, args: dict[str, Any], context: ToolContext) -> ToolExecutionResult:
         validated = GmailSearchArgs.model_validate(args)
-        q = validated.query.lower()
-
-        if settings.GMAIL_MODE == "real":
-            # For real Gmail mode, if credentials exist, invoke Gmail API; else mock fallback
-            # (Mock fallback is default until human supplies OAuth creds)
-            pass
-
-        messages = _load_mock_mailbox()
-        matching = []
-        for m in messages:
-            target_str = f"{m.get('subject', '')} {m.get('from', '')} {m.get('snippet', '')} {m.get('body', '')}".lower()
-            if q in target_str or q in [lbl.lower() for lbl in m.get("labels", [])]:
-                matching.append({
-                    "id": m["id"],
-                    "from": m.get("from", ""),
-                    "subject": m.get("subject", ""),
-                    "date": m.get("date", ""),
-                    "snippet": m.get("snippet", ""),
-                })
-                if len(matching) >= validated.max_results:
-                    break
+        matching = await get_backend(context.user_id).search(validated.query, validated.max_results)
 
         summary_lines = [
             f"ID: {m['id']} | From: {m['from']} | Subject: {m['subject']} | Date: {m['date']} | Snippet: {m['snippet']}"
@@ -155,15 +95,8 @@ class GmailReadTool:
 
     async def run(self, args: dict[str, Any], context: ToolContext) -> ToolExecutionResult:
         validated = GmailReadArgs.model_validate(args)
-        messages = _load_mock_mailbox()
-        target = next((m for m in messages if m["id"] == validated.message_id), None)
-
-        if not target:
-            raise ValueError(f"Gmail message with ID '{validated.message_id}' not found")
-
-        raw_body = target.get("body", "")
-        # Process any HTML in body
-        parsed_body = extract_html_text_with_hidden(raw_body) if "<" in raw_body and ">" in raw_body else raw_body
+        target = await get_backend(context.user_id).read(validated.message_id)
+        parsed_body = compose_body(target.get("body_plain", ""), target.get("body_html", ""))
 
         subject_val = target.get("subject", "")
         from_val = target.get("from", "")
@@ -234,7 +167,7 @@ class GmailReadTool:
             call_id=context.call_id,
             tool_name=self.name,
             scan_fields=scan_fields,
-            raw_output=target,
+            raw_output={**target, "body": parsed_body},
             text_summary=text_summary,
         )
 
@@ -261,7 +194,7 @@ class GmailDraftTool:
 
     async def run(self, args: dict[str, Any], context: ToolContext) -> ToolExecutionResult:
         validated = GmailDraftArgs.model_validate(args)
-        draft = mock_state.record_draft(to=validated.to, subject=validated.subject, body=validated.body)
+        draft = await get_backend(context.user_id).create_draft(validated.to, validated.subject, validated.body)
 
         scan_field = ScanField(
             name="draft_status",
@@ -308,19 +241,7 @@ class GmailSendTool:
     async def run(self, args: dict[str, Any], context: ToolContext) -> ToolExecutionResult:
         validated = GmailSendArgs.model_validate(args)
 
-        # In real mode with allowlist configured, check recipient
-        if settings.GMAIL_MODE == "real" and settings.GMAIL_SEND_ALLOWLIST:
-            allowed = [e.strip().lower() for e in settings.GMAIL_SEND_ALLOWLIST.split(",") if e.strip()]
-            if validated.to.lower() not in allowed:
-                raise ValueError(f"Recipient '{validated.to}' not permitted by GMAIL_SEND_ALLOWLIST")
-
-        # Record in mock state (and mock sent box)
-        sent = mock_state.record_sent_mail(
-            to=validated.to,
-            subject=validated.subject,
-            body=validated.body,
-            draft_id=validated.draft_id,
-        )
+        sent = await get_backend(context.user_id).send(validated.to, validated.subject, validated.body, validated.draft_id)
 
         scan_field = ScanField(
             name="send_status",

@@ -1,5 +1,5 @@
-"""Eval package for EVA Agent Backend."""
+"""Eval package for EVA Agent Backend (hooks, scenario runner, reset).
 
-from app.eval.run_scenario import run_scenario
-
-__all__ = ["run_scenario"]
+Kept import-light on purpose: ``app.guard_client`` imports ``app.eval.hooks``.
+Use ``from app.eval.run_scenario import run_scenario`` explicitly.
+"""

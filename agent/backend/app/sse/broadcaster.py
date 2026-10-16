@@ -75,68 +75,58 @@ class TaskSSEBroadcaster:
             return event_record
 
     async def subscribe(self, last_event_id: int | None = None) -> AsyncIterator[str]:
+        """Replay stored events with seq > last_event_id (0 when absent), then stream live.
+
+        The live queue is registered before the replay query, and emit() persists before it
+        broadcasts, so no event can be missed; duplicates are dropped by seq.
+        """
+        terminal_types = {
+            SSEEventType.TASK_COMPLETED.value,
+            SSEEventType.TASK_FAILED.value,
+            SSEEventType.TASK_HELD.value,
+            SSEEventType.TASK_CANCELLED.value,
+        }
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._subscribers.append(queue)
+        sent = max(last_event_id or 0, 0)
 
         try:
-            terminal_replayed = False
-            # 1. Replay past events from DB if requested
-            if last_event_id is not None and last_event_id >= 0:
-                async with async_session_factory() as session:
-                    stmt = (
-                        select(TaskEvent)
-                        .where(TaskEvent.task_id == self.task_id, TaskEvent.seq > last_event_id)
-                        .order_by(TaskEvent.seq.asc())
-                    )
-                    res = await session.execute(stmt)
-                    past_events = res.scalars().all()
-                    for pe in past_events:
-                        yield self._format_sse_message(
-                            event_type=pe.event_type,
-                            data={
-                                "task_id": pe.task_id,
-                                "seq": pe.seq,
-                                "ts": pe.ts.isoformat(),
-                                **pe.payload_json,
-                            },
-                            event_id=str(pe.seq),
-                        )
-                        if pe.event_type in (
-                            SSEEventType.TASK_COMPLETED.value,
-                            SSEEventType.TASK_FAILED.value,
-                            SSEEventType.TASK_HELD.value,
-                            SSEEventType.TASK_CANCELLED.value,
-                        ):
-                            terminal_replayed = True
+            async with async_session_factory() as session:
+                stmt = (
+                    select(TaskEvent)
+                    .where(TaskEvent.task_id == self.task_id, TaskEvent.seq > sent)
+                    .order_by(TaskEvent.seq.asc())
+                )
+                past_events = (await session.execute(stmt)).scalars().all()
+                term_stmt = select(TaskEvent.seq).where(
+                    TaskEvent.task_id == self.task_id, TaskEvent.event_type.in_(terminal_types)
+                ).limit(1)
+                terminal_seq = (await session.execute(term_stmt)).scalar_one_or_none()
 
-            if terminal_replayed:
+            for pe in past_events:
+                yield self._format_sse_message(
+                    event_type=pe.event_type,
+                    data={"task_id": pe.task_id, "seq": pe.seq, "ts": pe.ts.isoformat(), **pe.payload_json},
+                    event_id=str(pe.seq),
+                )
+                sent = pe.seq
+
+            # Task already finished and everything up to its terminal event has been delivered.
+            if terminal_seq is not None and sent >= terminal_seq:
                 return
 
-            # 2. Stream live events
             while True:
                 record = await queue.get()
-                # Format SSE
-                data = {
-                    "task_id": record["task_id"],
-                    "seq": record["seq"],
-                    "ts": record["ts"],
-                    **record["payload"],
-                }
-                yield self._format_sse_message(
-                    event_type=record["type"],
-                    data=data,
-                    event_id=str(record["seq"]),
-                )
-
-                # If task reached terminal state, stop streaming
-                if record["type"] in (
-                    SSEEventType.TASK_COMPLETED.value,
-                    SSEEventType.TASK_FAILED.value,
-                    SSEEventType.TASK_HELD.value,
-                    SSEEventType.TASK_CANCELLED.value,
-                ):
+                is_terminal = record["type"] in terminal_types
+                if record["seq"] <= sent:
+                    if is_terminal:
+                        break
+                    continue
+                sent = record["seq"]
+                data = {"task_id": record["task_id"], "seq": record["seq"], "ts": record["ts"], **record["payload"]}
+                yield self._format_sse_message(event_type=record["type"], data=data, event_id=str(record["seq"]))
+                if is_terminal:
                     break
-
         finally:
             if queue in self._subscribers:
                 self._subscribers.remove(queue)
