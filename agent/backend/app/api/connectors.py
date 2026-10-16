@@ -5,7 +5,7 @@ Connectors API endpoints for managing external integrations (Gmail OAuth).
 from __future__ import annotations
 
 from typing import Annotated, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,6 +77,43 @@ async def list_connectors(
     return [gmail_info, telegram_info]
 
 
+@router.post("/api/connectors/telegram/link-code")
+async def generate_telegram_link_code(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Generate a single-use verification code to link a Telegram private chat."""
+    from app.connectors.telegram import telegram_connector
+    return await telegram_connector.generate_link_code(current_user.id, session)
+
+
+@router.post("/api/connectors/telegram/verify")
+async def verify_telegram_link(
+    data: dict[str, Any],
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """
+    Verify and link a chat manually or via simulated mock update.
+    Requires: code, chat_id, and chat_type.
+    """
+    from app.connectors.telegram import telegram_connector
+    code = data.get("code", "")
+    chat_id = str(data.get("chat_id", ""))
+    chat_type = data.get("chat_type", "private")
+    chat_username = data.get("chat_username")
+    try:
+        return await telegram_connector.verify_and_link_chat(
+            code=code,
+            chat_id=chat_id,
+            chat_type=chat_type,
+            chat_username=chat_username,
+            session=session,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.delete("/api/connectors/telegram")
 async def disconnect_telegram(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -85,6 +122,58 @@ async def disconnect_telegram(
     from app.connectors.telegram import telegram_connector
     await telegram_connector.unlink_account(current_user.id, session)
     return {"status": "disconnected", "provider": "telegram"}
+
+
+@router.post("/api/connectors/telegram/webhook")
+async def telegram_webhook(
+    update: dict[str, Any],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """
+    Inbound Telegram webhook.
+    Validates X-Telegram-Bot-Api-Secret-Token if configured.
+    Processes link commands (e.g. /start EVA-XXXXXX) or normal messages.
+    """
+    if settings.TELEGRAM_WEBHOOK_SECRET:
+        if x_telegram_bot_api_secret_token != settings.TELEGRAM_WEBHOOK_SECRET:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret")
+
+    from app.connectors.telegram import telegram_connector
+    update_id = update.get("update_id", 0)
+    msg = update.get("message") or update.get("edited_message")
+    if not msg:
+        return {"ok": True, "skipped": "no_message"}
+
+    chat = msg.get("chat", {})
+    chat_id = str(chat.get("id", ""))
+    chat_type = chat.get("type", "")
+    text = (msg.get("text") or "").strip()
+    sender = msg.get("from", {}).get("username") or str(msg.get("from", {}).get("id", "user"))
+
+    # Check for linking code command: "/start EVA-XXXX" or "EVA-XXXX"
+    if text.startswith("/start "):
+        potential_code = text.split("/start ", 1)[1].strip()
+    else:
+        potential_code = text.strip()
+
+    if potential_code.startswith("EVA-") and len(potential_code) == 10:
+        try:
+            res = await telegram_connector.verify_and_link_chat(
+                code=potential_code,
+                chat_id=chat_id,
+                chat_type=chat_type,
+                chat_username=chat.get("username"),
+                session=session,
+            )
+            return {"ok": True, "action": "linked", "result": res}
+        except ValueError as e:
+            logger.warning("Telegram linking failed for chat %s: %s", chat_id, e)
+            return {"ok": False, "error": str(e)}
+
+    # Normal incoming message -> deduplicate and record into mock state/message store
+    is_new = telegram_connector.record_inbound_update(update_id, chat_id, text, sender=sender)
+    return {"ok": True, "action": "recorded" if is_new else "duplicate"}
 
 
 @router.get("/api/connectors/gmail/auth-url")

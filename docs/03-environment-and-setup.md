@@ -113,5 +113,20 @@ pytest -c agent/backend/pyproject.toml agent/backend/tests
 ```
 
 ### Telegram Connector Setup & Operation
-- Set `TELEGRAM_MODE=mock` in development and testing. In mock mode, the connector operates against `env/mock/state.py` without outbound network access.
-- For future live mode (`TELEGRAM_MODE=real`), configure `TELEGRAM_BOT_TOKEN` in `.env` and configure target chat IDs in `TELEGRAM_ALLOWLIST`. All `telegram.send` operations still require exact human approval through EVA.
+- **Modes**:
+  - `TELEGRAM_MODE=mock`: Used in development, CI, and evaluation (`APP_ENV=eval` strictly enforces `mock` mode). In mock mode, the connector reads and writes against `env/mock/state.py` without outbound network access.
+  - `TELEGRAM_MODE=real`: Operates via official Telegram Bot API. Requires `TELEGRAM_BOT_TOKEN` obtained from [@BotFather](https://t.me/BotFather).
+- **Environment Configuration**:
+  - `TELEGRAM_MODE=mock|real` (Default: `mock`)
+  - `TELEGRAM_BOT_TOKEN=<your_bot_token>` (Never logged or exposed to model context or frontend)
+  - `TELEGRAM_ALLOWLIST=123456789,987654321` (Comma-separated chat IDs allowed for live messaging)
+  - `TELEGRAM_WEBHOOK_SECRET=<random_secret>` (Validated against `X-Telegram-Bot-Api-Secret-Token` header on `POST /api/connectors/telegram/webhook`)
+- **Account Linking Procedure**:
+  1. User navigates to the Connectors page in EVA frontend.
+  2. Click **Connect Telegram** to generate a single-use verification code (`EVA-XXXXXX`, valid for 10 minutes).
+  3. Send the verification code to the EVA Telegram bot in a private chat.
+  4. The webhook or linking endpoint verifies the code, binds the Telegram `chat_id` and username to the authenticated user account, and invalidates the code. Group and channel chats are rejected.
+- **Security & Guard Enforcement**:
+  - Inbound messages (`telegram.read`, `telegram.history`) are marked `Trust.UNTRUSTED` and scanned via `scan_tool_result` before entering model context.
+  - Outbound messages (`telegram.send`) require explicit human approval via EVA gateway. Re-checking occurs right before dispatch; any edits to destination or message text void previous approval.
+

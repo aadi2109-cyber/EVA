@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     TELEGRAM_MODE: Literal["real", "mock"] = "mock"
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ALLOWLIST: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
 
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
