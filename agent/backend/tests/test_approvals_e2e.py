@@ -233,6 +233,39 @@ async def test_edited_args_require_reapproval(async_client, guard_http, script):
     assert len(mock_state.sent_messages) == sent_before
 
 
+async def test_edited_args_reapproved_then_run_with_edited_args(async_client, guard_http, script):
+    """Edit -> re-approval -> approve: the EDITED action runs exactly once (never the original)."""
+    h = await login(async_client)
+    sent_before = len(mock_state.sent_messages)
+    tid = await start_send_task(async_client, h, script)
+    appr = (await wait_for(tid, "approval.required")).payload_json["approval"]
+    edited = {**SEND_ARGS, "body": "Edited body approved by user"}
+
+    r = await async_client.post(f"/api/approvals/{appr['approval_id']}",
+                                json={"approved": True, "edited_args": edited}, headers=h)
+    assert r.json()["status"] == "re_approval_required"
+    new = r.json()["approval"]
+    await wait_for(tid, "approval.required", nth=2)
+    await asyncio.sleep(0.2)
+    assert len(mock_state.sent_messages) == sent_before, "nothing runs before the new approval"
+
+    r2 = await async_client.post(f"/api/approvals/{new['approval_id']}", json={"approved": True}, headers=h)
+    assert r2.status_code == 200 and r2.json()["status"] == "approved"
+    done = await wait_for(tid, TERMINAL)
+    assert done.event_type == "task.completed"
+
+    assert len(mock_state.sent_messages) == sent_before + 1
+    sent = mock_state.sent_messages[-1]
+    assert sent["to"] == "bob@corp.com" and sent["body"] == "Edited body approved by user"
+
+    # the new approval is single-use too
+    again = await async_client.post(f"/api/approvals/{new['approval_id']}", json={"approved": True}, headers=h)
+    assert again.status_code == 409
+    resolved = [e for e in await events(tid) if e.event_type == "approval.resolved"]
+    assert [e.payload_json["status"] for e in resolved] == ["re_approval_required", "approved"]
+    assert resolved[-1].payload_json["approval_id"] == new["approval_id"]
+
+
 async def test_approval_access_control(async_client, guard_http, script):
     h = await login(async_client)
     tid = await start_send_task(async_client, h, script)

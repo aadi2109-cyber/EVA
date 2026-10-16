@@ -26,7 +26,7 @@ The image runs `alembic upgrade head` on start; DB and per-user workspaces live 
 Config: `env/.env.example` (committed defaults) layered under `env/.env` (git-ignored; put real keys there).
 
 Notes
-- `DATABASE_URL` must use the async driver: `sqlite+aiosqlite:///./agent.db`. Plain `sqlite:///` fails at startup.
+- `DATABASE_URL` may be written `sqlite:///./agent.db` (as in doc 03); it is normalised to the async driver `sqlite+aiosqlite:///`.
 - Seeded logins (dev): `user@eva.local` / `UserPassword123!`, `admin@eva.local` / `AdminPassword123!`. Change them for anything shared.
 - `TOKEN_ENC_KEY` default is a dev key. Generate a real one for any real Gmail use (section 6).
 
@@ -124,7 +124,7 @@ Never run security tests or evals with `GMAIL_MODE=real`.
 | App exits at boot: `GUARD_PROFILE ... forbidden` | `off`/`basic` need `APP_ENV=eval` |
 | App exits: `APP_ENV=eval cannot run with GMAIL_MODE=real` | intended; set `GMAIL_MODE=mock` |
 | `alembic upgrade head` -> import errors | export `PYTHONPATH=.:../..:../../contracts:../../guard` and run from `agent/backend` |
-| `sqlite3.IntegrityError users.email` / pytest hangs | two test runs share `test_agent.db`; run one at a time or from different CWDs |
+| `sqlite3.IntegrityError users.email` / pytest hangs | stale `test_agent.db*` from an older checkout; delete it (tests now use a per-process temp DB) |
 | Gmail tool error "reconnect needed" / connector shows `reconnect_needed` | Testing-mode refresh tokens last ~7 days, or access was revoked. Run the connect flow again |
 | Callback returns 400 "Invalid or expired OAuth state" | the auth URL is valid 10 min and only for the user who requested it; request a new one. Also check `JWT_SECRET` did not change/differ between workers |
 | Callback 400 "did not return a refresh token" | revoke EVA at myaccount.google.com/permissions, reconnect (consent screen must appear) |

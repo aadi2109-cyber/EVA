@@ -6,6 +6,7 @@ The proxy never grants authority itself; the guard decides everything.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Annotated
 
@@ -44,6 +45,19 @@ async def proxy_admin_request(
     headers = {"Authorization": f"Bearer {settings.GUARD_SERVICE_TOKEN}"}
     if request.headers.get("content-type"):
         headers["Content-Type"] = request.headers["content-type"]
+
+    # Admin identity always comes from the JWT, never from client-supplied fields:
+    # four-eyes approval is only meaningful if proposer/approver cannot be spoofed.
+    headers["X-Admin-User-Id"] = current_user.id
+    if request.method == "POST" and path.strip("/") == "config/proposals":
+        try:
+            payload = json.loads(body or b"{}")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
+        payload["proposed_by"] = current_user.id
+        body = json.dumps(payload).encode()
 
     try:
         async with httpx.AsyncClient(timeout=10.0, transport=_admin_transport) as client:

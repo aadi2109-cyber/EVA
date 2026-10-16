@@ -121,6 +121,8 @@ class ConnectorAccount(Base):
     encrypted_refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     scopes: Mapped[str] = mapped_column(String(512), nullable=False)
     expires_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # "connected" | "reconnect_needed"
+    status: Mapped[str] = mapped_column(String(32), default="connected", server_default="connected", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user: Mapped[User] = relationship("User", back_populates="connector_accounts")

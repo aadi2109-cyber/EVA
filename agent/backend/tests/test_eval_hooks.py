@@ -192,7 +192,7 @@ async def test_orchestrator_guard_unreachable_fails_closed(eval_env, stub_guard_
 # ---------------------------------------------------------------- runner / reset
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("sid", ["S1", "S2", "S4", "S5", "S6", "S7", "S12"])
+@pytest.mark.parametrize("sid", ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S10", "S11", "S12"])
 async def test_run_scenario_full_passes(sid, eval_env, real_guard_client):
     res = await run_scenario(sid, profile="full")
     assert res["checks"], res
