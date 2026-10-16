@@ -42,18 +42,20 @@ def validate_and_normalize_provenance(
     if isinstance(prov, dict):
         prov = Provenance.model_validate(prov)
     
-    # If the source is external/retrieved, ensure trust is UNTRUSTED regardless of internal content claims
+    updates = {}
     if prov.source_type in (
         SourceType.EMAIL, SourceType.FILE, SourceType.WEB,
         SourceType.MESSAGE, SourceType.TOOL_OUTPUT
     ):
         if prov.trust != Trust.UNTRUSTED:
-            # External content claims can never elevate to USER or SYSTEM
-            prov.trust = Trust.UNTRUSTED
+            updates["trust"] = Trust.UNTRUSTED
 
     if not prov.field:
-        prov.field = field_name
-        
+        updates["field"] = field_name
+
+    if updates:
+        prov = prov.model_copy(update=updates)
+
     return prov
 
 def is_high_risk_field(field_name: str, provenance: Provenance) -> bool:

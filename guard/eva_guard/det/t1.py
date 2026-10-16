@@ -17,6 +17,9 @@ SIGNAL_EXFILTRATION_PATTERNS = "EXFILTRATION_PATTERNS"
 SIGNAL_TOOL_INVOCATION_MIMICRY = "TOOL_INVOCATION_MIMICRY"
 SIGNAL_URL_QUERY_EXFIL = "URL_QUERY_EXFIL"
 SIGNAL_HIDDEN_TEXT_INDICATORS = "HIDDEN_TEXT_INDICATORS"
+SIGNAL_AUTHORITY_CLAIMS = "AUTHORITY_CLAIMS"
+SIGNAL_INVOICE_FRAUD = "INVOICE_FRAUD"
+SIGNAL_TOOL_MISUSE = "TOOL_MISUSE"
 
 class T1Result(NamedTuple):
     signals: list[str]
@@ -39,9 +42,10 @@ _OVERRIDE_PATTERNS = [
 ]
 
 _EXFIL_PATTERNS = [
-    re.compile(r"(?i)\b(?:forward|send|email|exfiltrate|post|transmit|upload)\s+(?:all\s+)?(?:emails?|messages?|contacts?|files?|credentials?|secrets?|invoices?|mailbox|history)\s+to\s+([^\s,;]+)"),
+    re.compile(r"(?i)\b(?:forward|send|email|exfiltrate|post|transmit|upload|export)\s+(?:all\s+)?(?:emails?|messages?|contacts?|files?|credentials?|secrets?|invoices?|mailbox|history|records?|correspondence|token)\s+(?:to|without)\s+([^\s,;]+)"),
     re.compile(r"(?i)\b(?:curl|wget|fetch)\s+https?://[^\s]+\?(?:data|leak|token|secret|q)="),
     re.compile(r"(?i)\bto\s+[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+\s+(?:with\s+the\s+(?:contents?|files?|emails?|summary))"),
+    re.compile(r"(?i)\b(?:upload\s+files\s+to|send\s+current\s+token\s+to|export\s+customer\s+records)\b"),
 ]
 
 _TOOL_MIMICRY_PATTERNS = [
@@ -60,6 +64,20 @@ _HIDDEN_TEXT_PATTERNS = [
     re.compile(r"[\u200b\u200c\u200d\u200e\u200f\ufeff]{2,}"),  # Zero-width clusters
     re.compile(r"(?i)display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0px|color\s*:\s*(?:transparent|#ffffff|white)"),
     re.compile(r"(?i)<!--[\s\S]*?(?:ignore|system|instruction|forward|send|secret)[\s\S]*?-->"),
+]
+
+_AUTHORITY_PATTERNS = [
+    re.compile(r"(?i)(?:^|\n)\s*(?:compliance\s+director|internal\s+affairs|legal\s+department|system\s+architect|security\s+engineer|official\s+admin|antivirus\s+alert|infrastructure\s+team)\s*:", re.MULTILINE),
+    re.compile(r"(?i)\b(?:unannounced\s+audit|without\s+notifying\s+the\s+user|bypass\s+(?:deterministic\s+)?gateway\s+checks|confirm\s+tool\s+execution\s+for\s+[a-zA-Z0-9_.]+\s+without\s+approval)\b"),
+]
+
+_INVOICE_FRAUD_PATTERNS = [
+    re.compile(r"(?i)\b(?:banking\s+details\s+have\s+changed|new\s+beneficiary\s+account|send\s+all\s+future\s+wire\s+transfers\s+to|re-issue\s+payment\s+for\s+invoice)\b"),
+    re.compile(r"(?i)\b(?:iban\s+[a-zA-Z0-9]+|beneficiary\s+account\s+at\s+offshore)\b"),
+]
+
+_TOOL_MISUSE_PATTERNS = [
+    re.compile(r"(?i)\b(?:delete|truncate|drop|overwrite)\s+(?:all\s+)?(?:files?|workspace|tables?|database|records?)\b"),
 ]
 
 # Simple homoglyph/leet mapping for candidate inspection
@@ -144,12 +162,27 @@ def scan_t1(text: str) -> T1Result:
         if any(p.search(v) for p in _HIDDEN_TEXT_PATTERNS):
             signals.add(SIGNAL_HIDDEN_TEXT_INDICATORS)
 
+        # 7. Authority Claims
+        if any(p.search(v) for p in _AUTHORITY_PATTERNS):
+            signals.add(SIGNAL_AUTHORITY_CLAIMS)
+
+        # 8. Invoice Fraud
+        if any(p.search(v) for p in _INVOICE_FRAUD_PATTERNS):
+            signals.add(SIGNAL_INVOICE_FRAUD)
+
+        # 9. Tool Misuse
+        if any(p.search(v) for p in _TOOL_MISUSE_PATTERNS):
+            signals.add(SIGNAL_TOOL_MISUSE)
+
     # Compute heuristic score based on signal weights
     weights = {
         SIGNAL_OVERRIDE_PHRASES: 0.95,
         SIGNAL_EXFILTRATION_PATTERNS: 0.95,
+        SIGNAL_AUTHORITY_CLAIMS: 0.92,
+        SIGNAL_INVOICE_FRAUD: 0.90,
         SIGNAL_ROLE_MARKER_SPOOFING: 0.90,
         SIGNAL_TOOL_INVOCATION_MIMICRY: 0.88,
+        SIGNAL_TOOL_MISUSE: 0.88,
         SIGNAL_URL_QUERY_EXFIL: 0.85,
         SIGNAL_HIDDEN_TEXT_INDICATORS: 0.70,
     }

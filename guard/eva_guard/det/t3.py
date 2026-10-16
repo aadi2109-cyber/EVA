@@ -126,6 +126,16 @@ class LayaProvider:
         except Exception:
             return T3Result(verdict="uncertain", score=None)
 
+    def judge_sync(self, sentence: str, context: str, provenance: Provenance) -> T3Result:
+        """Synchronous judge interface."""
+        if not self.config.t3_enabled or not self.is_available:
+            return T3Result(verdict="unavailable", score=None, latency_ms=0.0)
+        clipped = sentence[:self.config.t3_max_text_chars]
+        start_time = time.perf_counter()
+        res = self._sync_predict(clipped, context)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+        return T3Result(verdict=res.verdict, score=res.score, latency_ms=elapsed_ms)
+
 class MockTier3Provider:
     """Mock Tier 3 provider for deterministic testing and benchmarks."""
     def __init__(self, default_verdict: T3VerdictType = "benign", delay_ms: float = 5.0) -> None:
@@ -136,6 +146,13 @@ class MockTier3Provider:
     def is_available(self) -> bool:
         return True
 
+    def judge_sync(self, sentence: str, context: str, provenance: Provenance) -> T3Result:
+        return T3Result(
+            verdict=self.default_verdict,
+            score=0.85 if self.default_verdict == "malicious" else 0.15,
+            latency_ms=self.delay_ms
+        )
+
     async def judge(
         self,
         sentence: str,
@@ -144,4 +161,4 @@ class MockTier3Provider:
     ) -> T3Result:
         if self.delay_ms > 0:
             await asyncio.sleep(self.delay_ms / 1000.0)
-        return T3Result(verdict=self.default_verdict, score=0.85 if self.default_verdict == "malicious" else 0.15, latency_ms=self.delay_ms)
+        return self.judge_sync(sentence, context, provenance)

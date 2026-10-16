@@ -89,7 +89,7 @@ async def run_benchmark(split: str = "dev") -> None:
         latencies.append(elapsed_ms)
 
         predicted_malicious = (res.disposition in ("sanitized", "quarantined", "held"))
-        actual_malicious = (item["label"] == 1)
+        actual_malicious = (item["label"] in ("attack", 1, True))
 
         if actual_malicious and predicted_malicious:
             tp += 1

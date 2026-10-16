@@ -6,6 +6,7 @@ T3 LAYA gray-band routing, surgical Sanitization, failure mode handling, and aud
 import time
 import uuid
 import hashlib
+import asyncio
 from typing import Any, Protocol, runtime_checkable
 from eva_guard.det.config import DetConfig
 from eva_guard.det.health import DetHealth
@@ -26,6 +27,17 @@ except ImportError:
         ScanRequest, ScanResponse, ScanField, SanitizedField,
         DetSummary, Provenance, Trust, SourceType
     )
+
+class AwaitableScanResponse(ScanResponse):
+    """
+    Subclass of ScanResponse that implements __await__.
+    Allows DetPipeline.scan() to be called synchronously (e.g. guard.scan_tool_result)
+    or awaited directly (e.g. await det_pipeline.scan(req)) without error.
+    """
+    def __await__(self):
+        async def _identity():
+            return self
+        return _identity().__await__()
 
 @runtime_checkable
 class AuditSink(Protocol):
@@ -55,6 +67,14 @@ class DetPipeline:
         self._total_sentences: int = 0
         self._t3_escalated_sentences: int = 0
 
+    def is_tier2_available(self) -> bool:
+        """Check if Tier 2 is available (read by Guard facade & health checks)."""
+        return self.t2.is_available
+
+    def is_t3_available(self) -> bool:
+        """Check if Tier 3 is available."""
+        return (self.t3 is not None and self.t3.is_available) if self.config.t3_enabled else False
+
     def health(self) -> DetHealth:
         """Reports DET health and telemetry gauges."""
         p50 = 0.0
@@ -68,11 +88,9 @@ class DetPipeline:
         if self._total_sentences > 0:
             escalation_rate = round(self._t3_escalated_sentences / self._total_sentences, 4)
 
-        t3_avail = (self.t3 is not None and self.t3.is_available) if self.config.t3_enabled else False
-
         return DetHealth(
-            tier2_available=self.t2.is_available,
-            t3_available=t3_avail,
+            tier2_available=self.is_tier2_available(),
+            t3_available=self.is_t3_available(),
             t2_model_hash=self.t2.model_hash,
             failure_mode=self.config.default_failure_mode,
             metrics={
@@ -82,10 +100,25 @@ class DetPipeline:
             }
         )
 
-    async def scan(self, req: ScanRequest) -> ScanResponse:
+    def _judge_t3_safe(self, text: str, context: str, prov: Provenance) -> T3Result:
+        """Executes Tier 3 judgment safely in sync/async contexts."""
+        if hasattr(self.t3, "judge_sync"):
+            return self.t3.judge_sync(text, context, prov)
+        try:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(
+                    asyncio.run,
+                    self.t3.judge(text, context, prov)
+                ).result(timeout=self.config.t3_timeout_ms / 1000.0)
+        except Exception:
+            return T3Result(verdict="uncertain", score=None, latency_ms=0.0)
+
+    def scan(self, req: ScanRequest) -> AwaitableScanResponse:
         """
         Scans all fields in a ScanRequest.
         Applies T1 -> T2 -> T3, sanitizes malicious content, handles failure modes, and emits audit.
+        Returns an AwaitableScanResponse that can be consumed synchronously or awaited.
         """
         start_total = time.perf_counter()
         warnings: list[str] = []
@@ -96,7 +129,7 @@ class DetPipeline:
         latencies = {"t1": 0.0, "t2": 0.0, "t3": 0.0, "total": 0.0}
 
         event_id = str(uuid.uuid4())
-        tier2_available = self.t2.is_available
+        tier2_available = self.is_tier2_available()
 
         # 1. Failure Mode Check
         if not tier2_available:
@@ -115,7 +148,7 @@ class DetPipeline:
                         "reason": "Tier 2 unavailable under fail_closed policy"
                     })
 
-                return ScanResponse(
+                return AwaitableScanResponse(
                     disposition="held",
                     fields=[],
                     det_summary=DetSummary(
@@ -218,10 +251,10 @@ class DetPipeline:
                         self._t3_escalated_sentences += 1
                         t3_used = True
                         t3_start = time.perf_counter()
-                        t3_res: T3Result = await self.t3.judge(
-                            sentence=span.text,
+                        t3_res: T3Result = self._judge_t3_safe(
+                            text=span.text,
                             context=raw_text[:500],
-                            provenance=norm_prov
+                            prov=norm_prov
                         )
                         latencies["t3"] += (time.perf_counter() - t3_start) * 1000.0
                         t3_last_verdict = t3_res.verdict
@@ -288,7 +321,7 @@ class DetPipeline:
 
         t2_max = max(t2_scores_all) if t2_scores_all else None
 
-        return ScanResponse(
+        return AwaitableScanResponse(
             disposition=disposition,
             fields=sanitized_fields,
             det_summary=DetSummary(
