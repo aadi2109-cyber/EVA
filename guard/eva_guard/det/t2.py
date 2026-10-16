@@ -10,9 +10,13 @@ Decision rule: high main + high aux -> benign meta discussion, keep and audit.
 import os
 import re
 import hashlib
+import logging
 from typing import NamedTuple
 from eva_guard.det.t1 import scan_t1
 from eva_guard.det.config import DetConfig
+
+logger = logging.getLogger(__name__)
+
 
 class Score(NamedTuple):
     main: float
@@ -97,6 +101,7 @@ class OnnxTier2Scorer(Tier2Scorer):
         self._aux = None
         self._hash: str | None = None
         self._available = False
+        self.unavailable_reason: str | None = None
         self._load_model()
 
     @staticmethod
@@ -118,17 +123,23 @@ class OnnxTier2Scorer(Tier2Scorer):
     def _load_model(self) -> None:
         cfg = self.config
         if not (os.path.exists(cfg.t2_model_path) and os.path.exists(cfg.t2_aux_model_path)):
+            self.unavailable_reason = "model file(s) not found"
+            logger.warning("T2 unavailable: %s (%s)", self.unavailable_reason, cfg.t2_model_path)
             return
         try:
             self._hash = self._sha256(cfg.t2_model_path)
             if cfg.t2_model_sha256 and cfg.t2_model_sha256 != self._hash:
+                self.unavailable_reason = "model SHA-256 does not match the pin"
+                logger.warning("T2 unavailable: %s", self.unavailable_reason)
                 return  # hash mismatch -> unavailable (fail closed)
             self._main = self._session(cfg.t2_model_path)
             self._aux = self._session(cfg.t2_aux_model_path)
             self._available = True
-        except Exception:
+        except Exception as exc:
             self._main = self._aux = None
             self._available = False
+            self.unavailable_reason = f"{type(exc).__name__}: {exc}"
+            logger.warning("T2 unavailable: %s", self.unavailable_reason)
 
     @property
     def is_available(self) -> bool:

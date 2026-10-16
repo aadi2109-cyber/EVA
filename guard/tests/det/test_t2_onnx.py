@@ -23,3 +23,10 @@ def test_onnx_scorer_pinned_hash_mismatch_is_unavailable():
 
 def test_factory_uses_onnx_by_default():
     assert isinstance(create_t2_scorer(DetConfig()), OnnxTier2Scorer)
+
+
+def test_missing_onnxruntime_reports_reason(monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)
+    sc = OnnxTier2Scorer(DetConfig())
+    assert not sc.is_available and sc.unavailable_reason
