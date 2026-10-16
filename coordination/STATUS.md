@@ -37,7 +37,10 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Scenario runner `guard/eval/runner.py` + `eval/scenarios/s1_s14.yaml`: S1-S14 x Baseline/Basic/Full; writes `eval/REPORT.md` + `results.json`; refuses unless `APP_ENV=eval GMAIL_MODE=mock`. Run: `cd guard && APP_ENV=eval GMAIL_MODE=mock PYTHONPATH=.:.. python -m eval.runner`.
   - Fixes found by the runner: file-path destinations (sandbox sentinel + traversal check), files.write only on user write intent, gmail.draft to out-of-policy recipient -> REQUIRE_APPROVAL (see contracts/CHANGES.md).
   - Test suite: 48 passing. Latest run: Full 14/14 expectations, 0 unauthorized side effects (Baseline 9, Basic 3); detector-dependent checks N/A until SEC-1 lands.
-- In progress: degradation drills (audit write failure, LAYA timeout) and ALIGN_VALIDATION.md; CP-A integration readiness.
+  - Degradation drills `eval/drills.py` -> `eval/DRILLS.md`: 10/10 fail closed (tier2 down, audit write failure, ALIGN timeout/crash, kill switch, unknown tool/task, missing DetPipeline warning).
+  - ALIGN: hard timeout + swappable `backend` in `AlignClient`; `eval/ALIGN_VALIDATION.md` (N=25 authored, heuristic backend: recall 10/14, FP 0/11, misses all in the `hard` group; LAYA backend not wired, so LAYA is unvalidated).
+  - Tests: 49 passing.
+- In progress: waiting on SEC-1 DetPipeline (scan checks S1/S9/S11, sanitization P/R, T2 latency); CP-A integration readiness.
 - Blocked / needs: Waiting for BE to wire real Guard facade / SEC-1 to wire `DetPipeline` at CP-A (H4).
 - Next: Baseline/Basic/Full scenario runner, degradation drill fixtures.
 
