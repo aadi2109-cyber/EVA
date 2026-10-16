@@ -24,8 +24,9 @@ ADMIN2_EMAIL, ADMIN2_PASSWORD = "admin2@eva.local", "AdminTwoPassword123!"
 
 
 @pytest.fixture
-def admin_proxy(tmp_path):
+def admin_proxy(tmp_path, monkeypatch):
     """Proxy -> in-process guard service, with an isolated audit DB and restored admin config."""
+    monkeypatch.setattr(settings, "GUARD_TRANSPORT", "http")  # the proxy refuses in-process mode
     saved_cfg = copy.deepcopy(admin_routes._active_config)
     saved_audit = guard_instance._audit
     guard_instance._audit = AuditLogger(db_path=tmp_path / "audit.db")
