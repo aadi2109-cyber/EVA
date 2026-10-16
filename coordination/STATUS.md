@@ -1,12 +1,25 @@
 # EVA — STATUS (each agent edits only its own section)
 
-Contract version: 0.1.0 · Last human merge: <time>
+Contract version: 0.1.0 · Last human merge: H0.75
 
 ## FE
 - Done:
-- In progress:
-- Blocked / needs:
-- Next:
+  - Downloaded Stitch reference assets (`stitch_screen.png`, `stitch_screen.html`) from Project ID: 14542611907438946012, Screen ID: 9258055bfecd4f938a90b93a442fc1ab.
+  - Authored comprehensive `agent/frontend/UI_NOTES.md` documenting visual language, obsidian dark theme (`#121316`), neon lime accents (`#c8f322`), typography, and full component inventory.
+  - Implemented typed API client (`src/api/client.ts`) and complete TypeScript contract types (`src/api/types.ts`) matching `02-contracts-v0.md`.
+  - Implemented resilient SSE client (`src/api/sse.ts`) with monotonic `seq` ordering and auto-reconnect.
+  - Implemented mock streams and scenario runners (`src/mocks/mockStream.ts`) for S1 (prompt injection sanitized), S2 (hijacked model send denied), S4 (exact-action approval modal flow), and S7 (Tier 2 degraded fail-closed mode).
+  - Built persistent Header navigation matching Stitch reference (`src/components/Header.tsx`).
+  - Built full Live Security Trace Panel (`src/components/LiveTracePanel.tsx`) with filter tabs, color-coded accessible badges (PASS, SANITIZED, QUARANTINED, HELD, ALLOW, REQUIRE_APPROVAL, DENY, guard.error), and right-hand Audit Inspector card with zero-raw-text guarantees.
+  - Built Exact-Action Approval Modal (`src/components/ApprovalModal.tsx`), Collapsible Tool Call Cards (`src/components/ToolCallCard.tsx`), Plan Steps list (`src/components/StepList.tsx`), and Task Outcome summary (`src/components/TaskSummaryLine.tsx`).
+  - Built all application pages: Task Workspace (`TaskWorkspace.tsx`), Settings & Security Telemetry (`SettingsTrace.tsx`), Connectors (`Connectors.tsx`), Sandboxed Files (`FilesViewer.tsx`), Task History (`History.tsx`), and Admin Enclave (`Admin.tsx`).
+  - CP-A/CP-B integration with the real BE (verified headlessly in Chromium against BE + guard service): real login/JWT restore, task create + SSE stream (block-based parser, `Last-Event-ID` reconnect, no reconnect after terminal event), approvals incl. re-approval, `/api/health` polling for the degraded banner, Connectors, Files browser, History with replay of stored events, Admin (guard health, audit explorer, hash-chain verify, kill switches). S1, S2, S4 seen end to end.
+  - Admin: config view + four-eyes proposals (proposer sees "waiting", a different admin approves; verified live with two admins) and review queue with decision recording. Admin `Eval` is read-only.
+  - Mocks kept behind `VITE_USE_MOCK_STREAM=true`.
+- In progress: -
+- Blocked / needs: see `coordination/requests/fe-to-be-live-demo.md` (scripted-provider switch for demos, tool.output field name, plan.step status, approval expiry).
+  - Tooling: `npm test` (Vitest + Testing Library, 35 tests: SSE parser/reconnect, API client, StepList, ToolCallCard, ApprovalModal, mock scenarios), `npm run lint` (ESLint 9, zero warnings, bans `dangerouslySetInnerHTML`, enforces hooks rules), `npm run typecheck`, `npm run test:e2e` (Playwright, 5 smoke tests: login, S1, S4 approval, S7 degraded banner, admin proposal; API stubbed via page.route, no backend needed).
+- Next: S7 live, state polish.
 
 ## BE
 - Done:
