@@ -11,16 +11,20 @@ Contract version: 0.1.0 · Last human merge: <time>
 ## BE
 - Done:
   - Role started on branch `role/backend`.
-  - Verified Python environment, installed dependencies (`pydantic-settings`, `structlog`, `argon2-cffi`, `pytest`, `pytest-asyncio`, `pyyaml`, `prometheus-client`).
+  - Verified Python environment, installed dependencies (`pydantic-settings`, `structlog`, `argon2-cffi`, `pytest`, `pytest-asyncio`, `pyyaml`, `prometheus-client`, `greenlet`, `fastapi`, `uvicorn`, `sqlalchemy`, `aiosqlite`).
   - Verified Gate G0 `contracts/` and `StubGuard` integration.
+  - Delivered `env/` (docker-compose, .env.example, mock fixtures: mailbox.json, workspace, web, state.py, reset.py).
+  - Delivered `agent/backend` app skeleton, configuration, auth, DB models (SQLite WAL).
+  - Delivered tool registry (Gmail real/mock, sandboxed files, web, messages).
+  - Delivered model providers (ScriptedProvider + OllamaProvider) and GuardClient (InProcess + HTTP).
+  - Delivered Orchestrator loop with strict provenance, guard checks, state observation, and SSE replay.
+  - Achieved Gate G1: full loop on StubGuard + ScriptedProvider + SSE.
+  - Achieved Checkpoint CP-A: injected-email scenario S1 passes end to end with real guard facade; S2, S4, S4 approval flow, S7, and S12 scenarios verified and passing.
+  - Full test suite passing: 22/22 tests passing in `agent/backend/tests/`.
 - In progress:
-  - Scaffolding `env/` (docker-compose, .env.example, mock fixtures: mailbox.json, workspace, web, state.py, reset.py).
-  - Building `agent/backend` app skeleton, configuration, auth, DB models (SQLite WAL).
-  - Building tool registry (Gmail real/mock, sandboxed files, web, messages).
-  - Building model providers (ScriptedProvider + OllamaProvider) and GuardClient (InProcess + HTTP).
-  - Implementing Orchestrator loop with strict provenance, guard checks, and SSE replay.
-- Blocked / needs: None. (OAuth credentials optional; running GMAIL_MODE=mock).
-- Next: Complete Gate G1 milestones (full orchestrator loop on StubGuard + ScriptedProvider + SSE).
+  - Checkpoint CP-B readiness: Real Gmail OAuth integration hardening, failure injection hook verification, and HTTP guard service parity.
+- Blocked / needs: None (OAuth credentials optional; running GMAIL_MODE=mock).
+- Next: Checkpoint CP-B demo scenario validations and integration with FE.
 
 ## SEC-1
 - Done:
