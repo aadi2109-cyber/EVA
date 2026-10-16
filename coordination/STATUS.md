@@ -40,6 +40,8 @@ Contract version: 0.1.0 · Last human merge: <time>
   - Degradation drills `eval/drills.py` -> `eval/DRILLS.md`: 10/10 fail closed (tier2 down, audit write failure, ALIGN timeout/crash, kill switch, unknown tool/task, missing DetPipeline warning).
   - ALIGN: hard timeout + swappable `backend` in `AlignClient`; `eval/ALIGN_VALIDATION.md` (N=25 authored, heuristic backend: recall 10/14, FP 0/11, misses all in the `hard` group; LAYA backend not wired, so LAYA is unvalidated).
   - Tests: 49 passing.
+  - Corpus re-split (stratified by family, grouped by base text; old test split held one family only). Request `requests/sec2-to-sec1-01.md` sent.
+  - S9 now uses a gray-band + timing-out T3 fixture when SEC-1's DetPipeline is present. Verified in a scratch merge of `role/sec1`: 14/14 Full expectations (S1, S9, S11 pass), 72 tests passing.
 - In progress: waiting on SEC-1 DetPipeline (scan checks S1/S9/S11, sanitization P/R, T2 latency); CP-A integration readiness.
 - Blocked / needs: Waiting for BE to wire real Guard facade / SEC-1 to wire `DetPipeline` at CP-A (H4).
 - Next: Baseline/Basic/Full scenario runner, degradation drill fixtures.

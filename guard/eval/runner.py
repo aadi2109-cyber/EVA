@@ -68,6 +68,31 @@ class FakeDet:
         return self.tier2
 
 
+def _gray_band_pipeline():
+    """SEC-1 DetPipeline with a gray-band T2 score and a T3 that times out ("uncertain"). None if det is absent."""
+    try:
+        from eva_guard.det.pipeline import DetPipeline
+        from eva_guard.det.t2 import Score
+    except ImportError:
+        return None
+
+    class GrayT2:
+        is_available = True
+        model_hash = "eval-gray-fixture"
+
+        def score(self, sentences):
+            return [Score(main=0.5, aux=0.0, meta_injection_discussed=False) for _ in sentences]
+
+    class TimeoutT3:
+        is_available = True
+
+        def judge_sync(self, sentence, context, provenance):
+            from eva_guard.det.t3 import T3Result
+            return T3Result(verdict="uncertain", score=None, latency_ms=1500.0)  # what LayaProvider returns on timeout
+
+    return DetPipeline(t3=TimeoutT3(), t2_scorer=GrayT2())
+
+
 @dataclass
 class ActionResult:
     tool: str
@@ -127,6 +152,10 @@ def run_scenario(sc: dict[str, Any], profile: str, db_dir: Path) -> ScenarioResu
     setup = sc.get("setup")
     if setup == "tier2_down":
         guard._det_pipeline = FakeDet(False)
+    if sc.get("force_laya_timeout"):
+        gp = _gray_band_pipeline()
+        if gp is not None:
+            guard._det_pipeline = gp
     live: Any = DownGuard() if setup == "guard_unreachable" else guard
 
     # Policy (Basic reuses the builder's allowlist only; Baseline has none)
