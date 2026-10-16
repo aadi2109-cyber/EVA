@@ -24,7 +24,7 @@ PROV = Provenance(source_id="corpus", source_type=SourceType.EMAIL, trust=Trust.
 
 
 def run(split: str, guard: Guard) -> dict:
-    rows = [json.loads(l) for l in (EVAL / "corpus" / f"{split}.jsonl").read_text().splitlines() if l.strip()]
+    rows = [json.loads(l) for l in (EVAL / "corpus" / (f"{split}.jsonl" if split != "blind" else "blind_sec2.jsonl")).read_text().splitlines() if l.strip()]
     tp = fn = fp = tn = 0
     fam = defaultdict(lambda: [0, 0])
     lat_per_kb, misses, fps = [], [], []
@@ -71,11 +71,14 @@ def main() -> None:
         L += ["", f"## Recall by family — {r['split']}", "", "| Family | Caught |", "|---|---|"]
         L += [f"| {k} | {v[0]}/{v[1]} |" for k, v in sorted(r["fam"].items())]
         L += ["", f"False positives ({r['split']}): " + ("; ".join(r["fps"]) or "none")]
-    L += ["", "## Targets (doc 04 §2)", "",
-          "- Precision > 85%: met on the sets above only if the table says so; recall is far below any useful bar and is reported, not claimed.",
-          "- T2 < 15 ms/KB p95: the table is end-to-end `Guard.scan_tool_result` including the synchronous SQLite audit write, with records mostly <0.2 KB (per-KB figure is inflated by the 0.1 KB floor). SEC-1's own det-only runner reports <1 ms per record. Not comparable to the target until measured on KB-sized inputs without the audit write.",
-          "- T3 escalation rate < 10%: 0% trivially, because `Guard` builds `DetPipeline` without a T3 provider (request sec2-to-sec1-01).",
-          "- Zero misses on a finite suite would not mean immunity; here recall is low and the gateway, not detection, carries the safety guarantee."]
+        if r["split"] == "blind":
+            L += ["", "Misses (blind): " + ("; ".join(m[:60] for m in r["misses"]) or "none")]
+    L += ["", "## Reading these numbers", "",
+          "- `dev`/`test` are in the repo and SEC-1 has had the corpus (and a paraphrase challenge set) while tuning T1/T2, so they are optimistic. `blind` (`corpus/blind_sec2.jsonl`, 48 fresh SEC-2-authored records, written after the tuning) is a one-shot probe: **do not tune on it**, or replace it with a new blind set before the next claim.",
+          "- Precision > 85% target: judge on `blind`, not `dev`/`test`.",
+          "- T2 < 15 ms/KB: the latency column is end-to-end `Guard.scan_tool_result` including the synchronous SQLite audit write, on records mostly <0.2 KB (per-KB figure inflated by a 0.1 KB floor); SEC-1's det-only runner measures the detector alone. Not comparable to the target until measured on KB-sized inputs.",
+          "- T3 escalation rate and LAYA behaviour: see `health().metrics` from the live facade; LAYA availability depends on the `laya` package being installed.",
+          "- Small N (24 attack + 24 benign in `blind`): intervals are wide. Zero or few misses on a finite suite is not immunity; the gateway, not detection, carries the safety guarantee."]
     (EVAL / "DET_METRICS.md").write_text("\n".join(L) + "\n")
     print("\n".join(L[7:12]))
 
