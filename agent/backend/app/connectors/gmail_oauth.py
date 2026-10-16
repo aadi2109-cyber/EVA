@@ -82,6 +82,16 @@ def make_oauth_state(user_id: str) -> str:
 def verify_oauth_state(state: str) -> str:
     try:
         payload = jwt.decode(state, settings.JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError as e:
+        raise OAuthError(
+            "Invalid or expired OAuth state: the link is older than 10 minutes. "
+            "Start again with GET /api/connectors/gmail/auth-url and approve within 10 minutes."
+        ) from e
+    except jwt.InvalidSignatureError as e:
+        raise OAuthError(
+            "Invalid or expired OAuth state: signature does not match this backend's JWT_SECRET "
+            "(the connect link came from another server, or JWT_SECRET changed after it was created)."
+        ) from e
     except jwt.PyJWTError as e:
         raise OAuthError("Invalid or expired OAuth state") from e
     if payload.get("purpose") != "gmail_oauth" or not payload.get("sub"):
