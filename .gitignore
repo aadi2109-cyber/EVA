@@ -27,3 +27,4 @@ workspace/
 Thumbs.db
 .vscode/
 .idea/
+*.egg-info/
