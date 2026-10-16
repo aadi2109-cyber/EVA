@@ -43,6 +43,8 @@ async def submit_approval_decision(
     task = (await session.execute(select(Task).where(Task.id == appr_rec.task_id))).scalar_one_or_none()
     if task is None or task.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if task.status != "running":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Task is {task.status}")
     if appr_rec.status != "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Approval already {appr_rec.status}")
 

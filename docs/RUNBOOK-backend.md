@@ -14,15 +14,14 @@ uvicorn app.main:app --reload --port 8000
 curl localhost:8000/api/health
 ```
 
-Docker (default service is the `api` only, guard imported in-process):
+Docker (API and the separately running HTTP guard):
 
 ```bash
-docker compose -f env/docker-compose.yml up --build            # api on :8000
-docker compose -f env/docker-compose.yml --profile http --profile ui up --build   # + guard :8100, ui :5173
+docker compose -f env/docker-compose.yml up --build            # api :8000 + guard :8100
+docker compose -f env/docker-compose.yml --profile ui up --build   # + ui :5173
 ```
 
-The `guard` and `ui` profiles need `guard/Dockerfile` and `agent/frontend/Dockerfile` (owned by SEC / FE).
-The image runs `alembic upgrade head` on start; DB and per-user workspaces live in the `eva-data` volume (`/data`).
+The guard image requires `guard/Dockerfile` from SEC-2 (requested in `coordination/requests/backend-to-sec2-01.md`); UI still requires `agent/frontend/Dockerfile` from FE. Compose forces `GUARD_TRANSPORT=http`, so task checks and `/api/admin/*` share the same guard service process and state. The API image runs `alembic upgrade head` on start; DB and per-user workspaces live in the `eva-data` volume (`/data`). Guard SQLite state lives in `guard-data`.
 Config: `env/.env.example` (committed defaults) layered under `env/.env` (git-ignored; put real keys there).
 
 Notes
@@ -133,4 +132,16 @@ Never run security tests or evals with `GMAIL_MODE=real`.
 | `web.fetch` "not reachable in eval mode" | expected in eval; use `http://localhost:8000/mock/web/<page>.html` |
 | `web.fetch` "Non-public address" / "Port N is not allowed" | SSRF policy; only public hosts on 80/443 |
 | API reset does not clear a running server | export the same `MOCK_STATE_FILE` for server and CLI (section 3) |
-| `docker compose up` fails on `guard`/`ui` | those profiles lack Dockerfiles in-repo; run the default `api` service only |
+| `docker compose up` fails building `guard` | `guard/Dockerfile` is SEC-2-owned and requested; local Compose cannot start until that file lands |
+| `docker compose --profile ui up` fails building `ui` | `agent/frontend/Dockerfile` is FE-owned and not part of the backend request |
+| `/api/admin/*` returns 503 | Admin routes need the HTTP guard facade. Set `GUARD_TRANSPORT=http` and point `GUARD_SERVICE_URL` at the same service used by the API. In-process mode has no public admin facade and cannot safely apply kill switches/config through this proxy. |
+| Guard health shows down in HTTP mode | Check `GUARD_SERVICE_URL`, matching `GUARD_SERVICE_TOKEN`, and that `service.main:app` is running. HTTP health timeouts/malformed bodies fail closed and are reported as guard errors. |
+| A task is held immediately after API restart | Expected recovery behavior: running tasks are not replayed because model/side-effect state is not transactionally resumable. Pending approvals are expired and a `task.held` SSE event with reason `backend_restart` is persisted. Start a new task after inspecting any already completed side effects. |
+| SSE client disconnects | Reconnect to the same task endpoint with the last received SSE `id` in `Last-Event-ID`; the API replays persisted events with larger sequence numbers. |
+| `pytest` sees duplicate email / SQLite locks | Run from a private working directory. `tests/conftest.py` allocates a separate temporary database per pytest process; do not manually set a shared `DATABASE_URL`. |
+
+## 8. CP-C verification notes
+
+Run backend tests from a private directory as described in section 2. To exercise the real HTTP transport, start `uvicorn service.main:app --host 127.0.0.1 --port 8100` from `guard/` with the same `GUARD_SERVICE_TOKEN` as the API, then run `S1`, `S2`, `S4`, `S7`, and `S12` with `GUARD_TRANSPORT=http`. Scenario counts and environment limits belong in the handoff; Docker build status must be reported separately when Docker is unavailable.
+
+Validation on 2026-10-16: Docker CLI is not installed on this host. The active Python 3.13 environment also has neither `pytest` nor FastAPI installed, and no `uv` executable/project virtualenv was found. Therefore the API/guard processes, scenario suite, and Docker build were not run here; no passing-test count is claimed. Seven new backend test cases were added for contract routes/errors/SSE disconnect-resume, restart recovery, approval cancellation, in-process admin refusal, and concurrent HTTP-guard tasks.
