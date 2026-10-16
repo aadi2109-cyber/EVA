@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+*.db-journal
+.pytest_cache/
+guard/guard.db
+eval/results.json

@@ -34,8 +34,10 @@ Contract version: 0.1.0 · Last human merge: <time>
   - HTTP Service (`guard/service/main.py`) with bearer token auth, prometheus metrics (`/metrics`), structured error responses.
   - Admin API (`guard/admin_api/`) with Four-Eyes config change enforcement, instantaneous kill switches, review queue, and audit verify.
   - Evaluation Corpus v1 (`guard/eval/corpus/`) with 170 attacks across 12 families, 178 benign (including 140 quoted/meta hard negatives), fixed train/dev/test splits ready for SEC-1.
-  - Full test suite passing: 45/45 tests passing (`guard/tests/`).
-- In progress: Evaluation scenario runner (`guard/eval/runner.py`) for S1-S14 and CP-A integration readiness.
+  - Scenario runner `guard/eval/runner.py` + `eval/scenarios/s1_s14.yaml`: S1-S14 x Baseline/Basic/Full; writes `eval/REPORT.md` + `results.json`; refuses unless `APP_ENV=eval GMAIL_MODE=mock`. Run: `cd guard && APP_ENV=eval GMAIL_MODE=mock PYTHONPATH=.:.. python -m eval.runner`.
+  - Fixes found by the runner: file-path destinations (sandbox sentinel + traversal check), files.write only on user write intent, gmail.draft to out-of-policy recipient -> REQUIRE_APPROVAL (see contracts/CHANGES.md).
+  - Test suite: 48 passing. Latest run: Full 14/14 expectations, 0 unauthorized side effects (Baseline 9, Basic 3); detector-dependent checks N/A until SEC-1 lands.
+- In progress: degradation drills (audit write failure, LAYA timeout) and ALIGN_VALIDATION.md; CP-A integration readiness.
 - Blocked / needs: Waiting for BE to wire real Guard facade / SEC-1 to wire `DetPipeline` at CP-A (H4).
 - Next: Baseline/Basic/Full scenario runner, degradation drill fixtures.
 

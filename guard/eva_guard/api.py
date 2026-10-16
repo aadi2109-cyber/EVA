@@ -105,6 +105,8 @@ class Guard:
         else:
             from .stub import StubGuard
             resp = StubGuard().scan_tool_result(req)
+            if "DET_PIPELINE_ABSENT" not in resp.warnings:
+                resp.warnings.append("DET_PIPELINE_ABSENT")
 
         # Audit scan event
         try:
