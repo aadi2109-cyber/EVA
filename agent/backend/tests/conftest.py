@@ -17,9 +17,10 @@ from httpx import ASGITransport, AsyncClient
 os.environ["APP_ENV"] = "dev"
 os.environ["GUARD_TRANSPORT"] = "inprocess"
 # Per-process database so concurrent pytest runs never share (and corrupt) one SQLite file.
-_TEST_DB_DIR = tempfile.mkdtemp(prefix="eva-test-db-")
+_TEST_DB_DIR = Path(tempfile.mkdtemp(prefix="eva-test-db-")).resolve()
 atexit.register(shutil.rmtree, _TEST_DB_DIR, ignore_errors=True)
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DB_DIR}/test_agent.db"
+# Use SQLAlchemy's forward-slash SQLite URL form on Windows as well.
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{(_TEST_DB_DIR / 'test_agent.db').as_posix()}"
 
 # Ensure imports resolve
 ROOT_DIR = Path(__file__).parent.parent.parent.parent
