@@ -1,57 +1,33 @@
 import React, { useState } from 'react';
 import { User } from '../api/types';
+import { api } from '../api/client';
 
 interface LoginProps {
   onLoginSuccess: (user: User, token: string) => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState<string>('sophia.sterling@corp.internal');
-  const [password, setPassword] = useState<string>('••••••••••••');
+  const [email, setEmail] = useState<string>('user@eva.local');
+  const [password, setPassword] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const doLogin = async (em: string, pw: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { user, access_token } = await api.auth.login(em, pw);
+      onLoginSuccess(user, access_token);
+    } catch (err: any) {
+      setError(err?.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      onLoginSuccess(
-        {
-          id: 'usr_secops_01',
-          name: 'Sophia Sterling',
-          email: email || 'sophia.sterling@corp.internal',
-          role: email.includes('admin') ? 'admin' : 'user',
-        },
-        'mock-jwt-token-eva-auth'
-      );
-    }, 600);
-  };
-
-  const handleQuickDemo = (role: 'user' | 'admin') => {
-    if (role === 'admin') {
-      setEmail('admin.root@corp.internal');
-      onLoginSuccess(
-        {
-          id: 'usr_admin_root',
-          name: 'Admin Overseer',
-          email: 'admin.root@corp.internal',
-          role: 'admin',
-        },
-        'mock-jwt-token-admin'
-      );
-    } else {
-      setEmail('sophia.sterling@corp.internal');
-      onLoginSuccess(
-        {
-          id: 'usr_secops_01',
-          name: 'Sophia Sterling',
-          email: 'sophia.sterling@corp.internal',
-          role: 'user',
-        },
-        'mock-jwt-token-user'
-      );
-    }
+    void doLogin(email, password);
   };
 
   return (
@@ -103,6 +79,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             />
           </div>
 
+          {error && (
+            <div role="alert" className="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={isLoading}
@@ -121,28 +103,6 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </button>
         </form>
 
-        {/* Demo Quick Select */}
-        <div className="pt-4 border-t border-white/5 space-y-2">
-          <span className="text-[10px] font-mono text-outline block text-center uppercase tracking-wider">
-            Quick Demonstration Credentials
-          </span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('user')}
-              className="py-2 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-white border border-white/5 text-[11px] font-medium transition-colors"
-            >
-              Demo User (Sophia)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo('admin')}
-              className="py-2 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high text-primary-container border border-primary-container/20 text-[11px] font-medium transition-colors"
-            >
-              Demo Admin (Enclave)
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

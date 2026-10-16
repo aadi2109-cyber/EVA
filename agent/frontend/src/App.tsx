@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { DegradedBanner } from './components/DegradedBanner';
 import { LiveTracePanel } from './components/LiveTracePanel';
@@ -19,22 +19,25 @@ import {
   SSEMessage,
 } from './api/types';
 import { SCENARIOS, INITIAL_SECURITY_TRACE_ITEMS } from './mocks/mockStream';
+import { api, getAuthToken } from './api/client';
+import { TaskEventStream } from './api/sse';
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_STREAM === 'true';
 
 export const App: React.FC = () => {
   // Authentication State
-  const [currentUser, setCurrentUser] = useState<User | null>({
-    id: 'usr_secops_01',
-    name: 'Sophia Sterling',
-    email: 'sophia.sterling@corp.internal',
-    role: 'user',
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [booting, setBooting] = useState<boolean>(!USE_MOCK && !!getAuthToken());
+  const streamRef = useRef<TaskEventStream | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
 
   // Navigation State
   const [currentTab, setCurrentTab] = useState<string>('workspace');
 
   // Live Security Trace State
   const [traceItems, setTraceItems] = useState<SecurityTraceItem[]>(
-    INITIAL_SECURITY_TRACE_ITEMS
+    USE_MOCK ? INITIAL_SECURITY_TRACE_ITEMS : []
   );
   const [isTraceDrawerOpen, setIsTraceDrawerOpen] = useState<boolean>(false);
 
@@ -65,12 +68,70 @@ export const App: React.FC = () => {
   // User role toggle (for quick testing admin views)
   const handleToggleRole = () => {
     if (!currentUser) return;
+    if (!USE_MOCK) {
+      // Role comes from the server (JWT); this control signs out instead.
+      streamRef.current?.close();
+      api.auth.logout();
+      setCurrentUser(null);
+      return;
+    }
     const nextRole = currentUser.role === 'admin' ? 'user' : 'admin';
     setCurrentUser({
       ...currentUser,
       role: nextRole,
     });
   };
+
+  // Restore session from stored JWT
+  useEffect(() => {
+    if (USE_MOCK) {
+      setCurrentUser({ id: 'usr_mock', name: 'Demo User', email: 'user@eva.local', role: 'user' });
+      return;
+    }
+    if (!getAuthToken()) return;
+    api.auth
+      .getMe()
+      .then(setCurrentUser)
+      .catch(() => api.auth.logout())
+      .finally(() => setBooting(false));
+  }, []);
+
+  // Poll backend + guard health to drive the degraded banner
+  useEffect(() => {
+    if (USE_MOCK || !currentUser) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const h = await api.health.get();
+        if (cancelled) return;
+        const g = h.guard as any;
+        if (g.status !== 'ok' || !g.tier2_available) {
+          setIsDegraded(true);
+          setFailureMode('fail_closed');
+          setDegradedReason(
+            g.status === 'down'
+              ? 'Guard service unreachable. Side-effect tools are disabled (fail-closed).'
+              : 'Tier-2 detector unavailable. Side-effect tools are disabled (fail-closed).'
+          );
+        } else {
+          setIsDegraded(false);
+        }
+      } catch {
+        if (cancelled) return;
+        setIsDegraded(true);
+        setFailureMode('fail_closed');
+        setDegradedReason('Backend unreachable. No tasks can run.');
+      }
+    };
+    poll();
+    const t = setInterval(poll, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [currentUser]);
+
+  useEffect(() => () => streamRef.current?.close(), []);
 
   // Replay Scenario Stream
   const runScenario = (scenarioId: string) => {
@@ -122,20 +183,17 @@ export const App: React.FC = () => {
 
       case 'plan.step':
         setSteps((prev) => {
-          const existingIdx = prev.findIndex((s) => s.index === data.index);
-          if (existingIdx >= 0) {
-            const next = [...prev];
-            next[existingIdx] = {
-              index: data.index,
-              title: data.title,
-              status: data.status,
-            };
-            return next;
+          // A new step starting means every earlier running step has finished.
+          const base = prev.map((st) =>
+            st.index < data.index && st.status === 'running' ? { ...st, status: 'completed' as const } : st
+          );
+          const step = { index: data.index, title: data.title, status: data.status };
+          const i = base.findIndex((st) => st.index === data.index);
+          if (i >= 0) {
+            base[i] = step;
+            return base;
           }
-          return [
-            ...prev,
-            { index: data.index, title: data.title, status: data.status },
-          ];
+          return [...base, step];
         });
         break;
 
@@ -283,53 +341,120 @@ export const App: React.FC = () => {
         setTraceItems((prev) => [newTraceState, ...prev]);
         break;
 
+      case 'guard.error':
+        setTraceItems((prev) => [
+          {
+            id: `trc-err-${data.seq ?? Date.now()}`,
+            seq: data.seq ?? prev.length + 1,
+            timestamp: new Date().toLocaleTimeString(),
+            type: 'error',
+            event: 'guard.error',
+            badge: 'guard.error',
+            origin: 'guard-client',
+            title: `Guard error at ${data.where || 'unknown'}`,
+            reasonCode: 'GUARD_ERROR',
+            plainEnglishReason: 'The guard failed; the action was not executed (fail-closed).',
+            call_id: data.call_id,
+          },
+          ...prev,
+        ]);
+        break;
+
       case 'task.completed':
       case 'task.held':
       case 'task.failed':
-        setTaskOutcome(data);
+      case 'task.cancelled':
+        setTaskOutcome({
+          final_text: data.final_text,
+          summary: data.summary || { sentences_removed: 0, actions_denied: 0, approvals: 0 },
+        });
+        if (data.final_text) setAssistantText((prev) => prev || data.final_text);
+        setSteps((prev) =>
+          prev.map((st) => (st.status === 'running' ? { ...st, status: 'completed' as const } : st))
+        );
         setIsExecuting(false);
         break;
     }
   };
 
-  const handleSendPrompt = (prompt: string) => {
-    // If user types a prompt, start a simulated S1 task flow
-    setCurrentPrompt(prompt);
-    runScenario('S1');
+  const openStream = (taskId: string) => {
+    setActiveTaskId(taskId);
+    streamRef.current = new TaskEventStream(
+      taskId,
+      handleSSEEvent,
+      (err) => setTaskError(`Event stream interrupted, reconnecting… (${err?.message || err})`)
+    );
   };
 
-  const handleApproveAction = (
+  // Replay a stored task: the backend re-sends its persisted events from seq 1.
+  const replayTask = (taskId: string, prompt: string) => {
+    streamRef.current?.close();
+    setCurrentTab('workspace');
+    setCurrentPrompt(prompt);
+    setAssistantText('');
+    setSteps([]);
+    setToolCalls([]);
+    setTaskOutcome(undefined);
+    setActiveApproval(null);
+    setTaskError(null);
+    setTraceItems([]);
+    setIsExecuting(true);
+    openStream(taskId);
+  };
+
+  const handleSendPrompt = async (prompt: string) => {
+    if (USE_MOCK) {
+      setCurrentPrompt(prompt);
+      runScenario('S1');
+      return;
+    }
+    streamRef.current?.close();
+    setCurrentPrompt(prompt);
+    setAssistantText('');
+    setSteps([]);
+    setToolCalls([]);
+    setTaskOutcome(undefined);
+    setActiveApproval(null);
+    setTaskError(null);
+    setIsExecuting(true);
+    try {
+      const { task_id } = await api.tasks.create(prompt);
+      openStream(task_id);
+    } catch (err: any) {
+      setIsExecuting(false);
+      setTaskError(err?.message || 'Failed to start task');
+    }
+  };
+
+  const submitApproval = async (
     approvalId: string,
+    approved: boolean,
     editedArgs?: Record<string, any>
   ) => {
-    setActiveApproval(null);
-    setAssistantText(
-      (prev) =>
-        prev +
-        `\n\n[Action Approved]: Tool call authorized by user ${currentUser?.name}. Verified sent.`
-    );
-    setTaskOutcome({
-      summary: {
-        sentences_removed: 0,
-        actions_denied: 0,
-        approvals: 1,
-      },
-    });
+    if (USE_MOCK) {
+      setActiveApproval(null);
+      return;
+    }
+    try {
+      const resp = await api.approvals.submit(approvalId, {
+        approved,
+        edited_args: editedArgs ?? null,
+      });
+      // re_approval_required: the new approval arrives over SSE (approval.required)
+      if (resp.status !== 're_approval_required') setActiveApproval(null);
+    } catch (err: any) {
+      setTaskError(err?.message || 'Approval submission failed');
+    }
   };
 
-  const handleDenyAction = (approvalId: string) => {
-    setActiveApproval(null);
-    setAssistantText(
-      (prev) => prev + `\n\n[Action Denied]: Tool execution aborted by user.`
-    );
-    setTaskOutcome({
-      summary: {
-        sentences_removed: 0,
-        actions_denied: 1,
-        approvals: 0,
-      },
-    });
-  };
+  const handleApproveAction = (approvalId: string, editedArgs?: Record<string, any>) =>
+    submitApproval(approvalId, true, editedArgs);
+
+  const handleDenyAction = (approvalId: string) => submitApproval(approvalId, false);
+
+  if (booting) {
+    return <div className="min-h-screen bg-background text-on-surface-variant flex items-center justify-center text-xs font-mono">Restoring session…</div>;
+  }
 
   if (!currentUser) {
     return <Login onLoginSuccess={(u) => setCurrentUser(u)} />;
@@ -357,6 +482,12 @@ export const App: React.FC = () => {
           failureMode={failureMode}
           reason={degradedReason}
         />
+
+        {taskError && (
+          <div role="alert" className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-2">
+            {taskError}
+          </div>
+        )}
 
         {/* Global Live Trace Drawer / Overlay when toggled from Header */}
         {isTraceDrawerOpen && (
@@ -396,12 +527,7 @@ export const App: React.FC = () => {
         {currentTab === 'files' && <FilesViewer />}
 
         {currentTab === 'history' && (
-          <History
-            onReplayScenario={(scenId) => {
-              setCurrentTab('workspace');
-              runScenario(scenId);
-            }}
-          />
+          <History onReplayTask={replayTask} />
         )}
 
         {currentTab === 'admin' && <Admin />}

@@ -1,6 +1,8 @@
 import { SSEEventType, SSEMessage } from './types';
 import { getAuthToken } from './client';
 
+const TERMINAL = new Set(['task.completed', 'task.failed', 'task.held', 'task.cancelled']);
+
 export type SSEHandler = (msg: SSEMessage) => void;
 
 export class TaskEventStream {
@@ -11,6 +13,7 @@ export class TaskEventStream {
   private abortController: AbortController | null = null;
   private lastSeq: number = -1;
   private isClosed: boolean = false;
+  private finished: boolean = false;
   private reconnectTimeout: any = null;
   private reconnectAttempts: number = 0;
 
@@ -62,44 +65,40 @@ export class TaskEventStream {
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        // SSE messages are separated by a blank line; a message may span chunks.
+        const blocks = buffer.split(/\r?\n\r?\n/);
+        buffer = blocks.pop() || '';
 
-        let currentEvent: SSEEventType = 'model.delta';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          if (trimmed.startsWith('event:')) {
-            currentEvent = trimmed.replace('event:', '').trim() as SSEEventType;
-          } else if (trimmed.startsWith('data:')) {
-            const rawData = trimmed.replace('data:', '').trim();
-            try {
-              const parsed = JSON.parse(rawData);
-              const seq = parsed.seq ?? parsed.data?.seq;
-
-              // Ensure monotonic seq order & idempotent processing
-              if (typeof seq === 'number') {
-                if (seq <= this.lastSeq) {
-                  // duplicate or older seq, ignore
-                  continue;
-                }
-                this.lastSeq = seq;
-              }
-
-              const msg: SSEMessage = {
-                event: currentEvent,
-                data: parsed,
-              };
-
-              this.onMessage(msg);
-            } catch (e) {
-              console.warn('[SSE] Failed to parse SSE JSON data:', rawData, e);
+        for (const block of blocks) {
+          let currentEvent = 'message';
+          const dataLines: string[] = [];
+          for (const line of block.split(/\r?\n/)) {
+            if (line.startsWith('event:')) currentEvent = line.slice(6).trim();
+            else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+          }
+          if (dataLines.length === 0) continue;
+          const rawData = dataLines.join('\n');
+          try {
+            const parsed = JSON.parse(rawData);
+            const seq = parsed.seq;
+            // Monotonic seq order & idempotent processing
+            if (typeof seq === 'number') {
+              if (seq <= this.lastSeq) continue;
+              this.lastSeq = seq;
             }
+            if (TERMINAL.has(currentEvent)) this.finished = true;
+            this.onMessage({ event: currentEvent as SSEEventType, data: parsed });
+          } catch (e) {
+            console.warn('[SSE] Failed to parse SSE JSON data:', rawData, e);
           }
         }
       }
+      // Server closes the stream after the terminal task event; any other end is a drop.
+      if (this.finished) {
+        this.isClosed = true;
+        return;
+      }
+      throw new Error('SSE stream ended before task finished');
     } catch (err: any) {
       if (this.isClosed || err.name === 'AbortError') return;
 

@@ -1,59 +1,68 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ConnectorInfo } from '../api/types';
+import { api } from '../api/client';
+
+const STATIC_CONNECTORS: ConnectorInfo[] = [
+  {
+    id: 'files',
+    name: 'Sandboxed Workspace Filesystem',
+    status: 'connected',
+    mode: 'real',
+    account: 'workspace',
+    scopes: ['Read files in the workspace', 'Write files (requires approval outside scratch)'],
+    expires_hint: 'Local mount, no token',
+  },
+  {
+    id: 'messages',
+    name: 'Messages',
+    status: 'connected',
+    mode: 'mock',
+    account: 'mock channel',
+    scopes: ['Send channel messages (mock channel only, always requires approval)'],
+    expires_hint: 'Mock, no token',
+  },
+];
 
 export const Connectors: React.FC = () => {
-  const [connectors, setConnectors] = useState<ConnectorInfo[]>([
-    {
-      id: 'gmail',
-      name: 'Google Gmail (Inbound & Outbound)',
-      status: 'connected',
-      mode: 'mock',
-      account: 'eva.agent.enclave@corp.internal',
-      scopes: [
-        'Read email headers and message snippets',
-        'Create email drafts',
-        'Send emails (strictly requires human approval)',
-      ],
-      expires_hint: 'Testing-mode token (refreshes via mock provider)',
-    },
-    {
-      id: 'files',
-      name: 'Sandboxed Workspace Filesystem',
-      status: 'connected',
-      mode: 'real',
-      account: 'sandbox://genesis-eva/workspace',
-      scopes: [
-        'Read files in workspace directory',
-        'Search file contents within scope',
-        'Write files (requires approval outside scratch)',
-      ],
-      expires_hint: 'Persistent local mount',
-    },
-    {
-      id: 'messages',
-      name: 'Internal Enterprise Messaging',
-      status: 'connected',
-      mode: 'mock',
-      account: '#general-enclave-feed',
-      scopes: [
-        'Read conversation threads',
-        'Send channel broadcasts (mock channel only, requires approval)',
-      ],
-      expires_hint: 'Internal mock socket',
-    },
-  ]);
+  const [gmail, setGmail] = useState<ConnectorInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const toggleGmailConnection = () => {
-    setConnectors((prev) =>
-      prev.map((c) => {
-        if (c.id === 'gmail') {
-          const nextStatus =
-            c.status === 'connected' ? 'disconnected' : 'connected';
-          return { ...c, status: nextStatus };
-        }
-        return c;
-      })
-    );
+  const load = async () => {
+    try {
+      setGmail(await api.connectors.list());
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load connectors');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const connectors = [...gmail, ...STATIC_CONNECTORS];
+
+  const toggleGmailConnection = async () => {
+    const g = gmail.find((c) => c.id === 'gmail');
+    if (!g || g.mode === 'mock') return;
+    setBusy(true);
+    try {
+      if (g.status === 'connected') {
+        await api.connectors.disconnectGmail();
+        await load();
+      } else {
+        const { url } = await api.connectors.getGmailAuthUrl();
+        window.location.href = url;
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Connector action failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -74,6 +83,13 @@ export const Connectors: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {error && (
+        <div role="alert" className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-2">
+          {error}
+        </div>
+      )}
+      {loading && <p className="text-xs font-mono text-outline">Loading connectors…</p>}
 
       {/* Connectors List */}
       <div className="space-y-4">
@@ -131,7 +147,7 @@ export const Connectors: React.FC = () => {
 
                 {connector.expires_hint && (
                   <p className="text-[11px] font-mono text-outline">
-                    Token Expiry Hint: {connector.expires_hint}
+                    Note: {connector.expires_hint}
                   </p>
                 )}
               </div>
@@ -159,8 +175,9 @@ export const Connectors: React.FC = () => {
                   {connector.status.toUpperCase()}
                 </span>
 
-                {connector.id === 'gmail' && (
+                {connector.id === 'gmail' && connector.mode === 'real' && (
                   <button
+                    disabled={busy}
                     onClick={toggleGmailConnection}
                     className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
                       isConnected
@@ -168,7 +185,7 @@ export const Connectors: React.FC = () => {
                         : 'bg-primary-container text-on-primary-container shadow-[0_0_15px_rgba(200,243,34,0.3)]'
                     }`}
                   >
-                    {isConnected ? 'Disconnect Account' : 'Connect Account'}
+                    {isConnected ? 'Disconnect Account' : isReconnect ? 'Reconnect Account' : 'Connect Account'}
                   </button>
                 )}
               </div>

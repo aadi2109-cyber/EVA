@@ -1,46 +1,39 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../api/client';
 import { WorkspaceFile } from '../api/types';
 
 export const FilesViewer: React.FC = () => {
-  const [files] = useState<WorkspaceFile[]>([
-    {
-      path: '/workspace/contracts/v0_policy.json',
-      name: 'v0_policy.json',
-      size: 1420,
-      is_directory: false,
-      modified_at: '2026-10-16 13:45',
-    },
-    {
-      path: '/workspace/fixtures/invoices_q3.csv',
-      name: 'invoices_q3.csv',
-      size: 8940,
-      is_directory: false,
-      modified_at: '2026-10-16 11:20',
-    },
-    {
-      path: '/workspace/fixtures/vendor_correspondence.txt',
-      name: 'vendor_correspondence.txt',
-      size: 4210,
-      is_directory: false,
-      modified_at: '2026-10-16 12:10',
-    },
-    {
-      path: '/workspace/scratch/summary_draft.md',
-      name: 'summary_draft.md',
-      size: 640,
-      is_directory: false,
-      modified_at: '2026-10-16 14:02',
-    },
-  ]);
+  const [dir, setDir] = useState<string>('');
+  const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<WorkspaceFile | null>(null);
+  const [content, setContent] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [selectedFile, setSelectedFile] = useState<WorkspaceFile>(files[0]);
+  useEffect(() => {
+    setLoading(true);
+    setSelectedFile(null);
+    api.files
+      .list(dir)
+      .then((f) => {
+        setFiles(f);
+        setError(null);
+      })
+      .catch((e) => setError(e?.message || 'Failed to list files'))
+      .finally(() => setLoading(false));
+  }, [dir]);
 
-  const fileContents: Record<string, string> = {
-    '/workspace/contracts/v0_policy.json': `{\n  "version": "0.1.0",\n  "default_allowed_tools": ["gmail.search", "gmail.read", "files.list", "files.read"],\n  "prohibited_side_effects": ["gmail.send", "files.write", "messages.send"],\n  "minimum_posture": "tier2_required",\n  "failure_mode": "fail_closed"\n}`,
-    '/workspace/fixtures/invoices_q3.csv': `id,vendor,amount_usd,status,due_date\nINV-091,Apex Cloud Hosting,450.00,PENDING,2025-05-28\nINV-882,Vendor Logistix,1120.00,PENDING,2025-06-02\nINV-401,SecOps Intel Labs,2900.00,PAID,2025-05-10`,
-    '/workspace/fixtures/vendor_correspondence.txt': `From: billing@apexcloud.corp\nSubject: Invoice INV-091 reminder\nPlease process payment by May 28.\n\nFrom: attacker-recon@evil-corp.com\nSubject: Critical System Update\n[CONTENT SANITISED BY EVA GUARD TIER-2: Adversarial override stripped]`,
-    '/workspace/scratch/summary_draft.md': `# Financial Summary Q3\n- Total Pending: $1,570.00\n- High Priority: Apex Cloud Hosting ($450.00)\n\nAudit Ref: EVA-TASK-9812`,
-  };
+  useEffect(() => {
+    if (!selectedFile) return;
+    setContent('Loading…');
+    api.files
+      .getContent(selectedFile.path)
+      .then((r) => setContent(r.content))
+      .catch((e) => setContent(`// ${e?.message || 'Failed to load file'}`));
+  }, [selectedFile]);
+
+  const openEntry = (f: WorkspaceFile) => (f.is_directory ? setDir(f.path) : setSelectedFile(f));
+  const parent = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '';
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -72,13 +65,29 @@ export const FilesViewer: React.FC = () => {
           <span className="text-[11px] font-bold uppercase tracking-wider text-outline block px-2">
             Files in Sandbox ({files.length})
           </span>
+          {error && <p role="alert" className="text-xs text-rose-300 px-2">{error}</p>}
+          {loading && <p className="text-xs font-mono text-outline px-2">Loading…</p>}
+          {!loading && !error && files.length === 0 && (
+            <p className="text-xs font-mono text-outline px-2">This folder is empty.</p>
+          )}
           <div className="space-y-1">
+            {dir && (
+              <div
+                onClick={() => setDir(parent)}
+                className="p-2.5 rounded-xl cursor-pointer text-xs font-mono text-on-surface-variant hover:bg-surface-container hover:text-white"
+              >
+                ../ <span className="text-outline">({dir})</span>
+              </div>
+            )}
             {files.map((file) => {
               const isSelected = selectedFile?.path === file.path;
               return (
                 <div
                   key={file.path}
-                  onClick={() => setSelectedFile(file)}
+                  onClick={() => openEntry(file)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && openEntry(file)}
                   className={`p-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between text-xs font-mono ${
                     isSelected
                       ? 'bg-surface-container-high text-white border border-primary-container/40 shadow-sm'
@@ -87,12 +96,12 @@ export const FilesViewer: React.FC = () => {
                 >
                   <div className="flex items-center gap-2 truncate">
                     <span className="material-symbols-outlined text-[16px] text-primary-container">
-                      description
+                      {file.is_directory ? 'folder' : 'description'}
                     </span>
                     <span className="truncate">{file.name}</span>
                   </div>
                   <span className="text-[10px] text-outline shrink-0">
-                    {file.size} B
+                    {file.is_directory ? '' : `${file.size} B`}
                   </span>
                 </div>
               );
@@ -105,15 +114,12 @@ export const FilesViewer: React.FC = () => {
           <div className="flex items-center justify-between border-b border-white/5 pb-3">
             <div className="flex items-center gap-2 font-mono text-xs">
               <span className="text-outline">File:</span>
-              <span className="text-white font-bold">{selectedFile.path}</span>
+              <span className="text-white font-bold">{selectedFile?.path ?? '—'}</span>
             </div>
-            <span className="font-mono text-[10px] text-outline">
-              Modified: {selectedFile.modified_at}
-            </span>
           </div>
 
           <pre className="p-4 rounded-xl bg-surface-container-low font-mono text-xs text-on-surface overflow-x-auto max-h-96 whitespace-pre border border-white/5">
-            {fileContents[selectedFile.path] || '// No content'}
+            {selectedFile ? content : '// Select a file to view it (read-only, plain text)'}
           </pre>
         </div>
       </div>

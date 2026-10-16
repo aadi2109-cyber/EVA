@@ -1,95 +1,71 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../api/client';
 import { Health, AuditRecord } from '../api/types';
 
+const KILL_TARGETS: { key: string; scope: 'tool' | 'all_write_tools'; label: string }[] = [
+  { key: 'all_write_tools', scope: 'all_write_tools', label: 'all_write_tools' },
+  { key: 'gmail.send', scope: 'tool', label: 'gmail.send' },
+  { key: 'files.write', scope: 'tool', label: 'files.write' },
+  { key: 'messages.send', scope: 'tool', label: 'messages.send' },
+];
+
 export const Admin: React.FC = () => {
-  const [health] = useState<Health>({
-    status: 'ok',
-    tier2_available: true,
-    t3_available: true,
-    align_available: true,
-    t2_model_hash: 'sha256:49c0d127ae80...',
-    config_version: 3,
-    contract_version: '0.1.0',
-    kill_switch: {
-      all_write_tools: false,
-      tools: [],
-    },
-    metrics: {
-      escalation_rate: 0.048,
-      p50_ms: 12.4,
-      p95_ms: 18.2,
-    },
-  });
+  const [health, setHealth] = useState<Health | null>(null);
+  const [auditRows, setAuditRows] = useState<AuditRecord[]>([]);
+  const [evalRuns, setEvalRuns] = useState<any[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [verifyStatus, setVerifyStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const [killSwitches, setKillSwitches] = useState({
-    all_write_tools: false,
-    'gmail.send': false,
-    'files.write': false,
-    'web.fetch': false,
-  });
+  const loadHealth = () =>
+    api.admin
+      .getHealth()
+      .then(setHealth)
+      .catch((e) => setError(e?.message || 'Failed to load guard health'));
 
-  const [auditRows] = useState<AuditRecord[]>([
-    {
-      id: 'aud_9021',
-      ts: '2026-10-16T14:02:18.421Z',
-      task_id: 'task-s1-prompt-injection',
-      type: 'det.scan',
-      actor: 'guard.det.tier2',
-      payload: {
-        tool: 'gmail.search',
-        disposition: 'sanitized',
-        removed_sentences: 1,
-      },
-      config_version: 3,
-      prev_hash: '0000a98b1c4e782f...',
-      hash: '9f830129bc7881ea...',
-    },
-    {
-      id: 'aud_9022',
-      ts: '2026-10-16T14:02:19.102Z',
-      task_id: 'task-s1-prompt-injection',
-      type: 'gateway.decision',
-      actor: 'guard.gateway',
-      payload: {
-        tool: 'gmail.search',
-        decision: 'ALLOW',
-      },
-      config_version: 3,
-      prev_hash: '9f830129bc7881ea...',
-      hash: '3bc71029da6614fa...',
-    },
-    {
-      id: 'aud_9023',
-      ts: '2026-10-16T13:58:10.021Z',
-      task_id: 'task-s2-hijack-blocked',
-      type: 'gateway.decision',
-      actor: 'guard.gateway',
-      payload: {
-        tool: 'gmail.send',
-        decision: 'DENY',
-        reason: 'TOOL_PROHIBITED',
-      },
-      config_version: 3,
-      prev_hash: '3bc71029da6614fa...',
-      hash: '77ea1920bd817290...',
-    },
-  ]);
+  useEffect(() => {
+    void loadHealth();
+    api.admin
+      .getAudit()
+      .then(setAuditRows)
+      .catch((e) => setError(e?.message || 'Failed to load audit log'));
+    api.admin
+      .getEvalRuns()
+      .then(setEvalRuns)
+      .catch(() => setEvalRuns(null));
+  }, []);
 
-  const [verifyStatus, setVerifyStatus] = useState<string | null>(null);
-
-  const handleVerifyChain = () => {
-    setVerifyStatus('Validating cryptographic hash chain...');
-    setTimeout(() => {
-      setVerifyStatus('Cryptographic hash-chain integrity verified (3/3 rows valid, zero tampering detected).');
-    }, 900);
+  const killState = (key: string): boolean => {
+    const ks: any = health?.kill_switch;
+    if (!ks) return false;
+    return key === 'all_write_tools' ? !!ks.all_write_tools : (ks.tools || []).includes(key);
   };
 
-  const toggleKillSwitch = (key: keyof typeof killSwitches) => {
-    setKillSwitches((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  const handleVerifyChain = async () => {
+    setVerifyStatus({ ok: true, text: 'Validating hash chain…' });
+    try {
+      const r = await api.admin.verifyAudit();
+      setVerifyStatus({ ok: r.valid, text: `${r.message} (${r.chain_length} rows${r.tampered_event_id ? `, tampered: ${r.tampered_event_id}` : ''})` });
+    } catch (e: any) {
+      setVerifyStatus({ ok: false, text: e?.message || 'Verification failed' });
+    }
   };
+
+  const toggleKillSwitch = async (t: (typeof KILL_TARGETS)[number]) => {
+    setBusy(true);
+    try {
+      setHealth(
+        await api.admin.setKillSwitch(t.scope, t.scope === 'all_write_tools' ? null : t.key, !killState(t.key))
+      );
+    } catch (e: any) {
+      setError(e?.message || 'Kill switch change failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const m = (health?.metrics || {}) as Record<string, number>;
+  const fmt = (v: number | undefined, unit = '') => (typeof v === 'number' ? `${v}${unit}` : '—');
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -115,6 +91,12 @@ export const Admin: React.FC = () => {
         </div>
       </section>
 
+      {error && (
+        <div role="alert" className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-2">
+          {error}
+        </div>
+      )}
+
       {/* Health Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-surface-container-low border border-white/5 space-y-1">
@@ -122,11 +104,11 @@ export const Admin: React.FC = () => {
             Guard Enclave Status
           </span>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-            <span className="text-lg font-bold text-white">HEALTHY</span>
+            <span className={`w-2.5 h-2.5 rounded-full ${health?.status === 'ok' ? 'bg-emerald-400' : 'bg-orange-400'}`} />
+            <span className="text-lg font-bold text-white">{health ? health.status.toUpperCase() : '…'}</span>
           </div>
           <p className="text-[11px] text-on-surface-variant">
-            Tier-2 & Gateway active
+            Tier-2: {health?.tier2_available ? 'up' : 'down'} · T3: {health?.t3_available ? 'up' : 'down'} · ALIGN: {health?.align_available ? 'up' : 'down'}
           </p>
         </div>
 
@@ -135,11 +117,9 @@ export const Admin: React.FC = () => {
             Latency (p50 / p95)
           </span>
           <div className="text-lg font-bold text-primary-container font-mono">
-            {health.metrics.p50_ms} ms / {health.metrics.p95_ms} ms
+            {fmt(m.p50_ms, ' ms')} / {fmt(m.p95_ms, ' ms')}
           </div>
-          <p className="text-[11px] text-on-surface-variant">
-            Target &lt; 15 ms/KB met
-          </p>
+
         </div>
 
         <div className="p-4 rounded-2xl bg-surface-container-low border border-white/5 space-y-1">
@@ -147,11 +127,9 @@ export const Admin: React.FC = () => {
             T3 / LAYA Escalation
           </span>
           <div className="text-lg font-bold text-white font-mono">
-            {(health.metrics.escalation_rate * 100).toFixed(1)}%
+            {typeof m.escalation_rate === 'number' ? `${(m.escalation_rate * 100).toFixed(1)}%` : '—'}
           </div>
-          <p className="text-[11px] text-on-surface-variant">
-            Target &lt; 10% met
-          </p>
+
         </div>
 
         <div className="p-4 rounded-2xl bg-surface-container-low border border-white/5 space-y-1">
@@ -159,10 +137,10 @@ export const Admin: React.FC = () => {
             Contract Version
           </span>
           <div className="text-lg font-bold text-white font-mono">
-            v{health.contract_version} (cfg {health.config_version})
+            {health ? `v${health.contract_version} (cfg ${health.config_version})` : '…'}
           </div>
           <p className="text-[11px] text-on-surface-variant">
-            Hash: {health.t2_model_hash?.slice(0, 14)}
+            Hash: {health?.t2_model_hash?.slice(0, 14) ?? '—'}
           </p>
         </div>
       </div>
@@ -184,36 +162,32 @@ export const Admin: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          {Object.entries(killSwitches).map(([target, enabled]) => (
-            <div
-              key={target}
-              className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 transition-colors ${
-                enabled
-                  ? 'bg-rose-950/40 border-rose-500/50'
-                  : 'bg-surface-container border-white/5'
-              }`}
-            >
-              <div>
-                <span className="font-mono text-xs font-bold text-white block">
-                  {target}
-                </span>
-                <span className="text-[10px] text-outline">
-                  {enabled ? 'BLOCKED' : 'ALLOWABLE'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => toggleKillSwitch(target as any)}
-                className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all ${
-                  enabled
-                    ? 'bg-rose-500 text-white'
-                    : 'bg-surface-container-high hover:bg-surface-container-highest text-white'
+          {KILL_TARGETS.map((t) => {
+            const enabled = killState(t.key);
+            return (
+              <div
+                key={t.key}
+                className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 transition-colors ${
+                  enabled ? 'bg-rose-950/40 border-rose-500/50' : 'bg-surface-container border-white/5'
                 }`}
               >
-                {enabled ? 'ACTIVE (BLOCKING)' : 'ENGAGE BLOCK'}
-              </button>
-            </div>
-          ))}
+                <div>
+                  <span className="font-mono text-xs font-bold text-white block">{t.label}</span>
+                  <span className="text-[10px] text-outline">{enabled ? 'BLOCKED' : 'ALLOWABLE'}</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || !health}
+                  onClick={() => toggleKillSwitch(t)}
+                  className={`px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all ${
+                    enabled ? 'bg-rose-500 text-white' : 'bg-surface-container-high hover:bg-surface-container-highest text-white'
+                  }`}
+                >
+                  {enabled ? 'ACTIVE (CLICK TO RELEASE)' : 'ENGAGE BLOCK'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -241,11 +215,11 @@ export const Admin: React.FC = () => {
         </div>
 
         {verifyStatus && (
-          <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-xs flex items-center gap-2">
+          <div className={`p-3 rounded-xl border font-mono text-xs flex items-center gap-2 ${verifyStatus.ok ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/15 border-rose-500/30 text-rose-300'}`}>
             <span className="material-symbols-outlined text-[16px]">
-              check_circle
+              {verifyStatus.ok ? 'check_circle' : 'error'}
             </span>
-            <span>{verifyStatus}</span>
+            <span>{verifyStatus.text}</span>
           </div>
         )}
 
@@ -268,7 +242,7 @@ export const Admin: React.FC = () => {
                     {row.id}
                   </td>
                   <td className="py-2.5 px-3 text-outline">
-                    {row.ts.split('T')[1].replace('Z', '')}
+                    {new Date(row.ts).toLocaleTimeString()}
                   </td>
                   <td className="py-2.5 px-3">{row.task_id}</td>
                   <td className="py-2.5 px-3">
@@ -286,79 +260,24 @@ export const Admin: React.FC = () => {
               ))}
             </tbody>
           </table>
+          {auditRows.length === 0 && (
+            <p className="text-xs font-mono text-outline py-3">No audit events yet.</p>
+          )}
         </div>
       </section>
 
-      {/* Acceptance Matrix (doc 04) */}
-      <section className="p-5 sm:p-6 rounded-2xl bg-surface-container-low border border-white/5 shadow-xl space-y-4">
-        <div>
-          <h3 className="font-bold text-white text-base">
-            Security Acceptance Matrix (doc 04 Configurations)
-          </h3>
-          <p className="text-xs text-on-surface-variant">
-            Comparison across Baseline (off), Basic (T1 + allowlist), and Full (Full Enclave Gateway).
-          </p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-white/10 text-outline font-mono">
-                <th className="py-2 px-3">Metric</th>
-                <th className="py-2 px-3">Baseline (Off)</th>
-                <th className="py-2 px-3">Basic (T1)</th>
-                <th className="py-2 px-3 text-primary-container">
-                  Full (EVA Guard)
-                </th>
-                <th className="py-2 px-3">Target</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 font-mono text-on-surface">
-              <tr>
-                <td className="py-2.5 px-3 font-sans font-medium text-white">
-                  Unauthorized Side Effects
-                </td>
-                <td className="py-2.5 px-3 text-rose-400">14 (Vulnerable)</td>
-                <td className="py-2.5 px-3 text-amber-400">4</td>
-                <td className="py-2.5 px-3 text-emerald-400 font-bold">
-                  0 (0 / 14 suites)
-                </td>
-                <td className="py-2.5 px-3 text-outline">0</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-sans font-medium text-white">
-                  Clean-Task Completion
-                </td>
-                <td className="py-2.5 px-3">94%</td>
-                <td className="py-2.5 px-3">91%</td>
-                <td className="py-2.5 px-3 text-primary-container font-bold">
-                  92.4%
-                </td>
-                <td className="py-2.5 px-3 text-outline">≥ 90%</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-sans font-medium text-white">
-                  Sanitization Precision
-                </td>
-                <td className="py-2.5 px-3">0%</td>
-                <td className="py-2.5 px-3">62%</td>
-                <td className="py-2.5 px-3 text-primary-container font-bold">
-                  88.7%
-                </td>
-                <td className="py-2.5 px-3 text-outline">&gt; 85%</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-sans font-medium text-white">
-                  Gateway Audit Completeness
-                </td>
-                <td className="py-2.5 px-3">0%</td>
-                <td className="py-2.5 px-3">100%</td>
-                <td className="py-2.5 px-3 text-emerald-400 font-bold">100%</td>
-                <td className="py-2.5 px-3 text-outline">100%</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      {/* Eval runs (read-only, from the guard) */}
+      <section className="p-5 sm:p-6 rounded-2xl bg-surface-container-low border border-white/5 shadow-xl space-y-3">
+        <h3 className="font-bold text-white text-base">Evaluation Runs</h3>
+        {evalRuns === null ? (
+          <p className="text-xs font-mono text-outline">Eval runs are not available from the guard yet.</p>
+        ) : evalRuns.length === 0 ? (
+          <p className="text-xs font-mono text-outline">No eval runs recorded.</p>
+        ) : (
+          <pre className="p-3 rounded-xl bg-surface-container-lowest font-mono text-xs overflow-x-auto max-h-80 border border-white/5">
+            {JSON.stringify(evalRuns, null, 2)}
+          </pre>
+        )}
       </section>
     </div>
   );

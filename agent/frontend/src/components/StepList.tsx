@@ -20,7 +20,7 @@ export const StepList: React.FC<StepListProps> = ({ steps }) => {
       </div>
 
       <div className="space-y-2">
-        {steps.map((step) => {
+        {steps.map((step, pos) => {
           const isDone = step.status === 'completed';
           const isRunning = step.status === 'running';
 
@@ -45,7 +45,7 @@ export const StepList: React.FC<StepListProps> = ({ steps }) => {
                       : 'bg-surface-container-high text-outline'
                   }`}
                 >
-                  {isDone ? '✓' : step.index + 1}
+                  {isDone ? '✓' : pos + 1}
                 </span>
                 <span className="truncate font-medium">{step.title}</span>
               </div>

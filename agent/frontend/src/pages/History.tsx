@@ -1,63 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '../api/client';
 
 interface PastTask {
   id: string;
-  timestamp: string;
-  prompt: string;
-  status: 'completed' | 'held' | 'denied';
-  sentencesRemoved: number;
-  actionsDenied: number;
-  approvals: number;
-  scenarioId?: string;
+  request: string;
+  status: string;
+  created_at: string;
+  final_text?: string | null;
 }
 
 interface HistoryProps {
-  onReplayScenario: (scenarioId: string) => void;
+  onReplayTask: (taskId: string, prompt: string) => void;
 }
 
-export const History: React.FC<HistoryProps> = ({ onReplayScenario }) => {
-  const pastTasks: PastTask[] = [
-    {
-      id: 'task-s1-prompt-injection',
-      timestamp: 'Today at 14:02:18 UTC',
-      prompt: 'Summarize my emails and list pending invoices',
-      status: 'completed',
-      sentencesRemoved: 1,
-      actionsDenied: 0,
-      approvals: 0,
-      scenarioId: 'S1',
-    },
-    {
-      id: 'task-s2-hijack-blocked',
-      timestamp: 'Today at 13:58:10 UTC',
-      prompt: 'Execute email archive forwarder routine',
-      status: 'denied',
-      sentencesRemoved: 0,
-      actionsDenied: 1,
-      approvals: 0,
-      scenarioId: 'S2',
-    },
-    {
-      id: 'task-s4-approval-flow',
-      timestamp: 'Today at 13:45:22 UTC',
-      prompt: 'Email the quarterly compliance report to bob@corp.com',
-      status: 'completed',
-      sentencesRemoved: 0,
-      actionsDenied: 0,
-      approvals: 1,
-      scenarioId: 'S4',
-    },
-    {
-      id: 'task-s7-degraded-fail-closed',
-      timestamp: 'Today at 13:30:05 UTC',
-      prompt: 'Scan inbound external webhooks under secondary shard',
-      status: 'held',
-      sentencesRemoved: 0,
-      actionsDenied: 1,
-      approvals: 0,
-      scenarioId: 'S7',
-    },
-  ];
+export const History: React.FC<HistoryProps> = ({ onReplayTask }) => {
+  const [pastTasks, setPastTasks] = useState<PastTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.tasks
+      .list()
+      .then(setPastTasks)
+      .catch((e) => setError(e?.message || 'Failed to load history'))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -78,6 +45,12 @@ export const History: React.FC<HistoryProps> = ({ onReplayScenario }) => {
         </div>
       </section>
 
+      {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
+      {loading && <p className="text-xs font-mono text-outline">Loading tasks…</p>}
+      {!loading && !error && pastTasks.length === 0 && (
+        <p className="text-xs font-mono text-outline">No tasks yet. Run one from the workspace.</p>
+      )}
+
       {/* Task List */}
       <div className="space-y-3">
         {pastTasks.map((t) => {
@@ -92,7 +65,7 @@ export const History: React.FC<HistoryProps> = ({ onReplayScenario }) => {
                     className={`font-mono text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
                       t.status === 'completed'
                         ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                        : t.status === 'denied'
+                        : t.status === 'failed' || t.status === 'cancelled'
                         ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
                         : 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'
                     }`}
@@ -102,25 +75,21 @@ export const History: React.FC<HistoryProps> = ({ onReplayScenario }) => {
                   <span className="font-mono text-xs text-outline">{t.id}</span>
                   <span className="text-outline text-xs">·</span>
                   <span className="font-mono text-xs text-on-surface-variant">
-                    {t.timestamp}
+                    {new Date(t.created_at).toLocaleString()}
                   </span>
                 </div>
 
-                <p className="text-sm font-semibold text-white">{t.prompt}</p>
+                <p className="text-sm font-semibold text-white">{t.request}</p>
 
-                <div className="flex items-center gap-3 text-xs font-mono text-outline pt-1">
-                  <span>{t.sentencesRemoved} sanitizations</span>
-                  <span>·</span>
-                  <span>{t.actionsDenied} denials</span>
-                  <span>·</span>
-                  <span>{t.approvals} approvals</span>
-                </div>
+                {t.final_text && (
+                  <p className="text-xs text-on-surface-variant line-clamp-2 whitespace-pre-wrap">{t.final_text}</p>
+                )}
               </div>
 
-              {t.scenarioId && (
+              {(
                 <button
                   type="button"
-                  onClick={() => onReplayScenario(t.scenarioId!)}
+                  onClick={() => onReplayTask(t.id, t.request)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-primary-container text-xs font-bold border border-white/10 transition-colors shadow-sm self-start md:self-auto"
                 >
                   <span className="material-symbols-outlined text-[16px]">

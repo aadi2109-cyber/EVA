@@ -12,14 +12,13 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
   onApprove,
   onDeny,
 }) => {
-  if (!approval) return null;
-
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedArgs, setEditedArgs] = useState<Record<string, any>>({});
   const [hasEdited, setHasEdited] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(300);
 
   useEffect(() => {
+    if (!approval) return;
     setEditedArgs(approval.exact_action.args || {});
     setHasEdited(false);
     setIsEditing(false);
@@ -43,6 +42,8 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
     }));
     setHasEdited(true);
   };
+
+  if (!approval) return null;
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
@@ -215,7 +216,8 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                   hasEdited ? editedArgs : undefined
                 )
               }
-              className="px-6 py-2.5 rounded-xl bg-primary-container hover:bg-white text-on-primary-container font-bold text-xs shadow-[0_0_20px_rgba(200,243,34,0.35)] transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
+              disabled={timeLeft === 0}
+              className="px-6 py-2.5 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl bg-primary-container hover:bg-white text-on-primary-container font-bold text-xs shadow-[0_0_20px_rgba(200,243,34,0.35)] transition-all flex items-center gap-1.5 hover:scale-[1.02] active:scale-[0.98]"
             >
               <span className="material-symbols-outlined text-[18px]">
                 check_circle

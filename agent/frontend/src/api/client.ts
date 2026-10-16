@@ -1,5 +1,4 @@
 import {
-  LoginResponse,
   User,
   SubmitApprovalRequest,
   SubmitApprovalResponse,
@@ -50,18 +49,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json();
 }
 
+const toUser = (u: any): User => ({
+  id: u.id,
+  email: u.email,
+  role: u.role,
+  name: u.name || String(u.email).split('@')[0],
+});
+
 export const api = {
   auth: {
-    login: async (email: string, password: string): Promise<LoginResponse> => {
-      const data = await request<LoginResponse>('/api/auth/login', {
+    login: async (email: string, password: string): Promise<{ access_token: string; user: User }> => {
+      const data = await request<any>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
       setAuthToken(data.access_token);
-      return data;
+      return { access_token: data.access_token, user: toUser(data.user) };
     },
     getMe: async (): Promise<User> => {
-      return request<User>('/api/me');
+      return toUser(await request<any>('/api/me'));
     },
     logout: () => {
       setAuthToken(null);
@@ -91,7 +97,7 @@ export const api = {
   approvals: {
     submit: async (
       approvalId: string,
-      req: SubmitApprovalRequest
+      req: Omit<SubmitApprovalRequest, 'user_id'>
     ): Promise<SubmitApprovalResponse> => {
       return request<SubmitApprovalResponse>(`/api/approvals/${approvalId}`, {
         method: 'POST',
@@ -116,10 +122,21 @@ export const api = {
 
   files: {
     list: async (path = ''): Promise<WorkspaceFile[]> => {
-      return request<WorkspaceFile[]>(`/api/files?path=${encodeURIComponent(path)}`);
+      const rows = await request<{ name: string; is_dir: boolean; size: number }[]>(
+        `/api/files?path=${encodeURIComponent(path)}`
+      );
+      return rows
+        .map((r) => ({
+          path: path ? `${path.replace(/\/+$/, '')}/${r.name}` : r.name,
+          name: r.name,
+          size: r.size,
+          is_directory: r.is_dir,
+          modified_at: '',
+        }))
+        .sort((a, b) => Number(b.is_directory) - Number(a.is_directory) || a.name.localeCompare(b.name));
     },
-    getContent: async (path: string): Promise<{ content: string; name: string }> => {
-      return request<{ content: string; name: string }>(`/api/files/content?path=${encodeURIComponent(path)}`);
+    getContent: async (path: string): Promise<{ content: string; path: string }> => {
+      return request<{ content: string; path: string }>(`/api/files/content?path=${encodeURIComponent(path)}`);
     },
   },
 
@@ -130,28 +147,26 @@ export const api = {
   },
 
   admin: {
-    getAudit: async (params?: { taskId?: string; tool?: string; decision?: string }): Promise<AuditRecord[]> => {
-      const search = new URLSearchParams();
+    getHealth: async (): Promise<Health> => request<Health>('/api/admin/health'),
+    getAudit: async (params?: { taskId?: string; eventType?: string }): Promise<AuditRecord[]> => {
+      const search = new URLSearchParams({ limit: '100' });
       if (params?.taskId) search.set('task_id', params.taskId);
-      if (params?.tool) search.set('tool', params.tool);
-      if (params?.decision) search.set('decision', params.decision);
-      return request<AuditRecord[]>(`/api/admin/audit?${search.toString()}`);
+      if (params?.eventType) search.set('event_type', params.eventType);
+      const rows = await request<any[]>(`/api/admin/audit?${search.toString()}`);
+      return rows.map((r) => ({ ...r, payload: r.payload_json }));
     },
-    verifyAudit: async (): Promise<{ verified: boolean; message: string; rows_checked: number }> => {
-      return request<{ verified: boolean; message: string; rows_checked: number }>('/api/admin/audit/verify');
-    },
+    verifyAudit: async (): Promise<{ valid: boolean; chain_length: number; tampered_event_id?: string | null; message: string }> =>
+      request('/api/admin/audit/verify'),
     setKillSwitch: async (
       scope: 'tool' | 'template' | 'all_write_tools',
-      target: string,
+      target: string | null,
       enabled: boolean
-    ): Promise<{ status: string }> => {
-      return request<{ status: string }>('/api/admin/kill-switch', {
+    ): Promise<Health> => {
+      return request<Health>('/api/admin/kill-switch', {
         method: 'POST',
         body: JSON.stringify({ scope, target, enabled }),
       });
     },
-    getEvalRuns: async (): Promise<any[]> => {
-      return request<any[]>('/api/admin/eval/runs');
-    },
+    getEvalRuns: async (): Promise<any[]> => request<any[]>('/api/admin/eval/runs'),
   },
 };

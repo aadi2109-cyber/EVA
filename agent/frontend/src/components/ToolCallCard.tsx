@@ -182,9 +182,11 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
                 </span>
               </div>
               <div className="p-2.5 rounded-lg bg-surface-container-high/40 border border-white/5 font-mono text-[11px] text-on-surface overflow-x-auto max-h-48 whitespace-pre-wrap">
-                {typeof output.result === 'object'
-                  ? JSON.stringify(output.result, null, 2)
-                  : String(output.result)}
+                {(() => {
+                  const r = output.sanitized_output ?? output.result;
+                  if (r === undefined || r === null) return '(no output)';
+                  return typeof r === 'object' ? JSON.stringify(r, null, 2) : String(r);
+                })()}
               </div>
             </div>
           )}

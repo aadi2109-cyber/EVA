@@ -206,7 +206,9 @@ export interface GuardDecisionPayload {
 export interface ToolOutputPayload {
   call_id: string;
   tool: string;
-  result: Record<string, any> | string;
+  result?: Record<string, any> | string;
+  /** Sanitized tool result as sent by the backend (never raw flagged text). */
+  sanitized_output?: string;
   scan: ScanResponse;
 }
 

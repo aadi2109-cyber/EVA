@@ -13,9 +13,11 @@ Contract version: 0.1.0 · Last human merge: H0.75
   - Built full Live Security Trace Panel (`src/components/LiveTracePanel.tsx`) with filter tabs, color-coded accessible badges (PASS, SANITIZED, QUARANTINED, HELD, ALLOW, REQUIRE_APPROVAL, DENY, guard.error), and right-hand Audit Inspector card with zero-raw-text guarantees.
   - Built Exact-Action Approval Modal (`src/components/ApprovalModal.tsx`), Collapsible Tool Call Cards (`src/components/ToolCallCard.tsx`), Plan Steps list (`src/components/StepList.tsx`), and Task Outcome summary (`src/components/TaskSummaryLine.tsx`).
   - Built all application pages: Task Workspace (`TaskWorkspace.tsx`), Settings & Security Telemetry (`SettingsTrace.tsx`), Connectors (`Connectors.tsx`), Sandboxed Files (`FilesViewer.tsx`), Task History (`History.tsx`), and Admin Enclave (`Admin.tsx`).
-- In progress: Completing package installation and local build validation.
-- Blocked / needs: None. Fully functional against contract v0 and mock SSE stream.
-- Next: Integration CP-A when backend ready.
+  - CP-A/CP-B integration with the real BE (verified headlessly in Chromium against BE + guard service): real login/JWT restore, task create + SSE stream (block-based parser, `Last-Event-ID` reconnect, no reconnect after terminal event), approvals incl. re-approval, `/api/health` polling for the degraded banner, Connectors, Files browser, History with replay of stored events, Admin (guard health, audit explorer, hash-chain verify, kill switches). S1, S2, S4 seen end to end.
+  - Mocks kept behind `VITE_USE_MOCK_STREAM=true`.
+- In progress: -
+- Blocked / needs: see `coordination/requests/fe-to-be-live-demo.md` (scripted-provider switch for demos, tool.output field name, plan.step status, approval expiry).
+- Next: S7 live, Admin review queue/config proposals, Vitest/Playwright/lint tooling, state polish.
 
 ## BE
 - Done:
