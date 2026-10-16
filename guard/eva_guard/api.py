@@ -7,6 +7,7 @@ Owner: SEC-2 (Authority-side Security)
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from contracts.models import (
@@ -123,6 +124,16 @@ class Guard:
                 or changes.get("t3_enabled", old["t3_enabled"]) is False
                 or changes.get("align_enabled", old["align_enabled"]) is False
                 or changes.get("block_threshold", old["block_threshold"]) > old["block_threshold"])
+
+    def reset_config_for_tests(self) -> None:
+        """Test/eval only: drop config versions and proposals back to defaults. Refuses outside eval/dev/test."""
+        if os.getenv("APP_ENV", "dev").lower() not in ("eval", "dev", "test"):
+            raise RuntimeError("reset_config_for_tests is not available in this environment")
+        with self._store._conn() as c:
+            c.execute("DELETE FROM config_versions"); c.execute("DELETE FROM config_proposals")
+        cfg = dict(self.DEFAULT_CONFIG)
+        self._store.put_config_version(1, cfg, "system", None, None)
+        self.apply_config(cfg)
 
     def apply_config(self, cfg: dict[str, Any]) -> None:
         self._config = dict(cfg)

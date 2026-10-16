@@ -73,3 +73,13 @@ def test_double_approval_rejected_and_review_queue_persists(url):
     routes.submit_review_decision("item-1", ReviewDecisionRequest(reviewer_id="r", decision="rejected", notes="n"))
     _use(Guard(db_url=url))
     assert [i["id"] for i in routes.list_review_queue()] == ["item-1"]
+
+
+def test_reset_config_for_tests_restores_defaults_and_is_env_guarded(url, monkeypatch):
+    g = Guard(db_url=url); _use(g)
+    routes.approve_config_proposal(_propose({"align_enabled": False}).proposal_id, approver_id="bob")
+    g.reset_config_for_tests()
+    assert g.get_config() == Guard.DEFAULT_CONFIG and g._align.enabled is True
+    monkeypatch.setenv("APP_ENV", "prod")
+    with pytest.raises(RuntimeError):
+        g.reset_config_for_tests()
