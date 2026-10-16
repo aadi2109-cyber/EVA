@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
-    OLLAMA_MODEL: str = "llama3.1"
+    OLLAMA_MODEL: str = "gpt-oss:20b"
 
     # web.search backend: "mock" (default; always used in eval) or "ollama" (Ollama web-search API)
     WEB_SEARCH_PROVIDER: Literal["mock", "ollama"] = "mock"
