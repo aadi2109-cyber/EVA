@@ -1,6 +1,6 @@
 """
 DET Benchmark & Metric Runner.
-Usage: python -m eval.det.run --split dev|test
+Usage: python -m eval.det.run --split dev|test|challenge
 Evaluates detection pipeline precision, recall, false positive rate,
 sanitization accuracy, and CPU inference latency.
 """
@@ -43,11 +43,11 @@ async def run_benchmark(split: str = "dev") -> None:
     print("Hardware: Laptop CPU (No GPU), intra_op_threads=2")
     print("=" * 65)
 
-    if split == "test":
+    if split in ("test", "challenge"):
         print("[NOTICE] Running on held-out TEST split. Zero tuning permitted.")
 
     # Try loading from guard/eval/corpus if exists
-    corpus_file = Path(__file__).resolve().parents[1] / "corpus" / f"{split}.jsonl"
+    corpus_file = (Path(__file__).resolve().parent / "challenge.jsonl") if split == "challenge" else (Path(__file__).resolve().parents[1] / "corpus" / f"{split}.jsonl")
     data = []
     if corpus_file.exists():
         with open(corpus_file, "r", encoding="utf-8") as f:
@@ -129,7 +129,7 @@ async def run_benchmark(split: str = "dev") -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="DET Benchmark Runner")
-    parser.add_argument("--split", choices=["dev", "test"], default="dev", help="Corpus split to evaluate")
+    parser.add_argument("--split", choices=["dev", "test", "challenge"], default="dev", help="Corpus split to evaluate")
     args = parser.parse_args()
     asyncio.run(run_benchmark(split=args.split))
 

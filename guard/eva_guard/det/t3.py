@@ -8,6 +8,7 @@ Advisory only:
 - Never decides tool permissions.
 """
 import asyncio
+import concurrent.futures
 import time
 from typing import Literal, Protocol, NamedTuple
 from eva_guard.det.config import DetConfig
@@ -36,6 +37,11 @@ class Tier3Provider(Protocol):
     @property
     def is_available(self) -> bool:
         ...
+
+# Shared daemon-ish pool: a hung provider call must never block a scan past its budget.
+# Callers use future.result(timeout=...) and never wait on pool shutdown.
+_T3_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="det-t3")
+
 
 class LayaProvider:
     """
@@ -132,7 +138,12 @@ class LayaProvider:
             return T3Result(verdict="unavailable", score=None, latency_ms=0.0)
         clipped = sentence[:self.config.t3_max_text_chars]
         start_time = time.perf_counter()
-        res = self._sync_predict(clipped, context)
+        fut = _T3_POOL.submit(self._sync_predict, clipped, context)
+        try:
+            res = fut.result(timeout=self.config.t3_timeout_ms / 1000.0)
+        except Exception:  # timeout or provider error -> conservative 'uncertain'
+            fut.cancel()
+            res = T3Result(verdict="uncertain", score=None)
         elapsed_ms = (time.perf_counter() - start_time) * 1000.0
         return T3Result(verdict=res.verdict, score=res.score, latency_ms=elapsed_ms)
 

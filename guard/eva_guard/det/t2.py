@@ -38,6 +38,7 @@ _META_DISCUSSION_PATTERNS = [
     re.compile(r"""(?i)["'`]\s*(?:ignore\s+previous|system\s*:|forward\s+all)\s*["'`]"""),
     re.compile(r"""(?i)\b(?:research(?:ers)?|paper|study|demonstrated|benchmarking|evaluating|defending\s+against)\b"""),
     re.compile(r"""(?i)\b(?:prompt\s+injections?|jailbreaks?|indirect\s+injection)\b"""),
+    re.compile(r"""(?i)\b(?:common|known|typical|classic)\s+(?:attack|injection|jailbreak)s?\b|\bwhich\s+is\s+why\s+we\s+(?:sanitis|sanitiz|filter|block)"""),
     re.compile(r"""(?i)\b(?:we\s+found\s+that|users\s+might\s+input|adversary\s+can)\b"""),
 ]
 
