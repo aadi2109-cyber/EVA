@@ -14,6 +14,21 @@ uvicorn app.main:app --reload --port 8000
 curl localhost:8000/api/health
 ```
 
+### Windows (PowerShell)
+```powershell
+cd agent\backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1          # if blocked: Set-ExecutionPolicy -Scope Process Bypass
+pip install -e ".[dev]"
+$env:PYTHONPATH = ".;..\..;..\..\contracts;..\..\guard"   # per window; ';' separator
+Copy-Item ..\..\env\.env.example ..\..\env\.env          # then edit
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+curl.exe localhost:8000/api/health         # PowerShell's `curl` is an alias; use curl.exe
+```
+`ModuleNotFoundError: greenlet` means an old install (before `greenlet` was a declared dependency): `git pull`, then `pip install -e ".[dev]"` again.
+
+
 Docker (default service is the `api` only, guard imported in-process):
 
 ```bash
