@@ -30,9 +30,14 @@ Contract version: 0.1.0 · Last human merge: <time>
     - `LAYA_VALIDATION.md`: Measured CPU validation report and recommendation.
     - `guard/eval/det/run.py`: Benchmark runner (`python -m eval.det.run --split dev|test`).
     - Test suite in `guard/tests/det/`: 21 unit and hypothesis property tests passing.
-- In progress: Slice 2 (H4–H7): T2 model fine-tuning spike, LAYA timeout verification, and CP-A end-to-end integration scenario.
-- Blocked / needs: None. All 66 tests (SEC-1 + SEC-2) passing seamlessly.
-- Next: End-to-end scenario validation (S1 & S5) against `Guard` facade and mock mailbox/workspace environment.
+  - Slice 2: real T2 (ONNX, TF-IDF+LR multi-head, hash-pinned) now actually scores in `OnnxTier2Scorer` (was delegating to interim); main floored by T1, aux floored by rule meta-patterns. `create_t2_scorer` uses it by default.
+  - Fixed: committed ONNX models failed to load without an `en_US.UTF-8` locale (StringNormalizer) -> retrained with lowercasing outside the graph; `eval/train_t2.py` now path-independent.
+  - Fixed: `eval.det.run` read the wrong corpus path and silently used a 12-item fallback; it now runs the real dev/test splits.
+  - Calibration (dev only): `t2_block_threshold=0.60` (separate from T1 `block_threshold`). Dev: P 100% / R 82% / FPR 0%. Test (run once, not tuned): P 100% / R 100% / FPR 0%, p95 < 1 ms. Caveat: test attacks are near-variants of train items, so treat test recall as optimistic.
+  - 71 tests passing.
+- In progress: LAYA T3 timeout verification, harder held-out attacks (invoice_fraud/authority_claims are the weakest families), int8 quantization.
+- Blocked / needs: None. Note T2 model is a TF-IDF baseline, not a fine-tuned encoder (MODEL_CARD target); no int8 yet.
+- Next: Expand corpus with paraphrased attacks, then re-calibrate on dev; BE wires `Guard` facade at CP-A.
 
 ## SEC-2
 - Done:

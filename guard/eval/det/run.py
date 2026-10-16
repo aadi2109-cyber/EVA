@@ -47,7 +47,7 @@ async def run_benchmark(split: str = "dev") -> None:
         print("[NOTICE] Running on held-out TEST split. Zero tuning permitted.")
 
     # Try loading from guard/eval/corpus if exists
-    corpus_file = Path("guard/eval/corpus") / f"{split}.jsonl"
+    corpus_file = Path(__file__).resolve().parents[1] / "corpus" / f"{split}.jsonl"
     data = []
     if corpus_file.exists():
         with open(corpus_file, "r", encoding="utf-8") as f:
@@ -60,6 +60,7 @@ async def run_benchmark(split: str = "dev") -> None:
         data = BENCHMARK_EXAMPLES
 
     config = DetConfig()
+    print(f"T2 scorer       : {'onnx' if Path(config.t2_model_path).exists() else 'interim'}")
     pipeline = DetPipeline(config=config)
 
     tp, fp, tn, fn = 0, 0, 0, 0

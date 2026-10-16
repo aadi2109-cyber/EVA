@@ -83,50 +83,48 @@ class InterimTier2Scorer(Tier2Scorer):
 
 class OnnxTier2Scorer(Tier2Scorer):
     """
-    Quantized int8 ONNX sentence classifier running on CPU with 2 threads.
-    Validates model SHA256 hash at initialization.
+    Multi-head ONNX sentence classifier (main: injection, aux: quoted/meta) on CPU.
+    Verifies the main model's SHA-256 against the pin at load; any failure -> unavailable
+    (the pipeline then applies its configured failure mode).
+    The main score is floored by the T1 rule score so rules are never weakened by the model.
     """
     def __init__(self, config: DetConfig) -> None:
         self.config = config
-        self._session = None
-        self._tokenizer = None
+        self._main = None
+        self._aux = None
         self._hash: str | None = None
         self._available = False
         self._load_model()
 
+    @staticmethod
+    def _sha256(path: str) -> str:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    def _session(self, path: str):
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = self.config.intra_op_threads
+        opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        return ort.InferenceSession(path, sess_options=opts, providers=["CPUExecutionProvider"])
+
     def _load_model(self) -> None:
-        model_path = self.config.t2_model_path
-        if not os.path.exists(model_path):
-            self._available = False
+        cfg = self.config
+        if not (os.path.exists(cfg.t2_model_path) and os.path.exists(cfg.t2_aux_model_path)):
             return
-
-        # Compute and verify SHA256
-        hasher = hashlib.sha256()
         try:
-            with open(model_path, "rb") as f:
-                for chunk in iter(lambda: f.read(65536), b""):
-                    hasher.update(chunk)
-            computed_hash = hasher.hexdigest()
-            self._hash = computed_hash
-
-            if self.config.t2_model_sha256 and self.config.t2_model_sha256 != computed_hash:
-                # Hash mismatch -> fail closed
-                self._available = False
-                return
-
-            import onnxruntime as ort
-            sess_options = ort.SessionOptions()
-            sess_options.intra_op_num_threads = self.config.intra_op_threads
-            sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-            self._session = ort.InferenceSession(
-                model_path,
-                sess_options=sess_options,
-                providers=["CPUExecutionProvider"]
-            )
+            self._hash = self._sha256(cfg.t2_model_path)
+            if cfg.t2_model_sha256 and cfg.t2_model_sha256 != self._hash:
+                return  # hash mismatch -> unavailable (fail closed)
+            self._main = self._session(cfg.t2_model_path)
+            self._aux = self._session(cfg.t2_aux_model_path)
             self._available = True
         except Exception:
+            self._main = self._aux = None
             self._available = False
 
     @property
@@ -137,12 +135,31 @@ class OnnxTier2Scorer(Tier2Scorer):
     def model_hash(self) -> str | None:
         return self._hash
 
+    @staticmethod
+    def _positive_probs(session, batch) -> list[float]:
+        out = session.run(None, {session.get_inputs()[0].name: batch})
+        return [float(row[1]) for row in out[1]]
+
     def score(self, sentences: list[str]) -> list[Score]:
-        if not self._available or not self._session:
+        if not self._available:
             raise RuntimeError("Tier 2 ONNX model is not available")
-        # Multi-head inference implementation
-        # (Fall back to interim scoring logic for structure if tokenizer is absent)
-        return InterimTier2Scorer(self.config).score(sentences)
+        if not sentences:
+            return []
+        import numpy as np
+        batch = np.array([[s.lower()] for s in sentences], dtype=object)
+        main = self._positive_probs(self._main, batch)
+        aux = self._positive_probs(self._aux, batch)
+        results: list[Score] = []
+        for s, m, a in zip(sentences, main, aux):
+            if not s.strip():
+                results.append(Score(main=0.0, aux=0.0))
+                continue
+            m = max(m, scan_t1(s).score)
+            hits = sum(1 for p in _META_DISCUSSION_PATTERNS if p.search(s))
+            if hits:
+                a = max(a, min(0.95, 0.4 + hits * 0.25))  # rule-based meta signal floors the aux head
+            results.append(Score(main=m, aux=a, meta_injection_discussed=(m >= self.config.t2_meta_min_main and a >= self.config.t2_meta_min_aux)))
+        return results
 
 def create_t2_scorer(config: DetConfig, use_interim: bool = False) -> Tier2Scorer:
     """Factory for Tier 2 scorer."""

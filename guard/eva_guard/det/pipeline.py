@@ -238,7 +238,7 @@ class DetPipeline:
                         continue
 
                     # Direct T2 block threshold check
-                    if score.main >= self.config.block_threshold:
+                    if score.main >= self.config.t2_block_threshold:
                         malicious_spans.append(span)
                         continue
 
