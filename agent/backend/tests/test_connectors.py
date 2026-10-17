@@ -37,3 +37,8 @@ async def test_connectors_list_mock_mode(async_client):
     gmail_conn = next(c for c in connectors if c["id"] == "gmail")
     assert gmail_conn["status"] == "connected"
     assert gmail_conn["mode"] == "mock"
+
+    tg_conn = next(c for c in connectors if c["id"] == "telegram")
+    assert tg_conn["status"] == "connected"
+    assert tg_conn["mode"] == "mock"
+    assert tg_conn["account"] == "@eva_mock_bot"

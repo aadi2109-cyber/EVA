@@ -46,6 +46,9 @@ TOOL_REGISTRY = {
     "web.fetch": {"required": ["url"], "read_only": True},
     "messages.history": {"required": [], "read_only": True},
     "messages.send": {"required": ["channel", "text"], "read_only": False},
+    "telegram.read": {"required": ["chat_id"], "read_only": True},
+    "telegram.history": {"required": ["chat_id"], "read_only": True},
+    "telegram.send": {"required": ["chat_id", "text"], "read_only": False},
 }
 
 DESTINATION_ARG_MAP = {
@@ -54,6 +57,8 @@ DESTINATION_ARG_MAP = {
     "web.fetch": "url",
     "files.read": "path",
     "files.write": "path",
+    "messages.send": "channel",
+    "telegram.send": "chat_id",
 }
 
 

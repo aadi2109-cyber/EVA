@@ -12,7 +12,7 @@ from contracts.models import CheckActionRequest
 pytestmark = pytest.mark.asyncio
 
 
-def test_default_in_process_client_is_the_real_guard():
+async def test_default_in_process_client_is_the_real_guard():
     c = InProcessGuardClient()
     assert c.implementation == "eva_guard.api.Guard"
     assert type(c._guard).__name__ == "Guard"  # not StubGuard

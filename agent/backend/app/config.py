@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     TOKEN_ENC_KEY: str = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="
     GMAIL_SEND_ALLOWLIST: str = ""
 
+    TELEGRAM_MODE: Literal["real", "mock"] = "mock"
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ALLOWLIST: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
     OLLAMA_MODEL: str = "gpt-oss:20b"
@@ -90,11 +95,16 @@ class Settings(BaseSettings):
         if self.APP_ENV == "eval" and self.WEB_SEARCH_PROVIDER != "mock":
             raise ValueError("WEB_SEARCH_PROVIDER must be 'mock' when APP_ENV='eval' (mock web only).")
 
-        # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock
+        # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock and TELEGRAM_MODE=mock
         if self.APP_ENV == "eval" and self.GMAIL_MODE == "real":
             raise ValueError(
                 "Security eval environment (APP_ENV=eval) cannot run with GMAIL_MODE=real. "
                 "Must be set to GMAIL_MODE=mock."
+            )
+        if self.APP_ENV == "eval" and self.TELEGRAM_MODE == "real":
+            raise ValueError(
+                "Security eval environment (APP_ENV=eval) cannot run with TELEGRAM_MODE=real. "
+                "Must be set to TELEGRAM_MODE=mock."
             )
 
         return self

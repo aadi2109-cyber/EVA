@@ -118,6 +118,7 @@ class ConnectorAccount(Base):
     user_id: Mapped[str] = mapped_column(String(64), ForeignKey("users.id"), index=True, nullable=False)
     provider: Mapped[str] = mapped_column(String(32), default="gmail", nullable=False)
     account_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    account_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
     encrypted_refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     scopes: Mapped[str] = mapped_column(String(512), nullable=False)
     expires_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -139,4 +140,15 @@ class ApprovalIndex(Base):
     action_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)  # pending, approved, denied, expired
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class TelegramLinkCode(Base):
+    __tablename__ = "telegram_link_codes"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(64), ForeignKey("users.id"), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

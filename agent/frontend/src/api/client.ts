@@ -121,6 +121,23 @@ export const api = {
         method: 'DELETE',
       });
     },
+    getTelegramLinkCode: async (): Promise<{ code: string; expires_at: string; instructions: string }> => {
+      return request<{ code: string; expires_at: string; instructions: string }>(
+        '/api/connectors/telegram/link-code',
+        { method: 'POST' }
+      );
+    },
+    verifyTelegramLink: async (data: { code: string; chat_id: string; chat_type?: string; chat_username?: string }): Promise<any> => {
+      return request<any>('/api/connectors/telegram/verify', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    disconnectTelegram: async (): Promise<void> => {
+      return request<void>('/api/connectors/telegram', {
+        method: 'DELETE',
+      });
+    },
   },
 
   files: {
