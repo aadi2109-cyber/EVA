@@ -105,6 +105,8 @@ Email/web HTML becomes text via `app/tools/htmltext.py`: visible text first, the
 off-screen). Nothing hidden is dropped, so the guard scanner sees it. `<script>`/`<style>` bodies are omitted.
 `web.search` is simulated (fixed example.com results); there is no search backend.
 
+- **Check the Ollama key/model/search:** `python -m app.eval.check_live` (never prints the key). It tests that *chat* is authorised, that the model emits a tool call on its own, and that web search answers. Note `GET /api/tags` returns 200 with no key at all (public listing), so it is NOT a key check. 401 on chat = key rejected (create a new one); 404 = wrong model name (use `gpt-oss:20b`).
+
 ### Where configuration comes from
 The backend loads, lowest to highest priority: `env/.env.example` (defaults) < `env/.env` (git-ignored secrets) < `./.env` < real process environment variables. The **guard service reads only its process environment** (e.g. `GUARD_SERVICE_TOKEN`), not `env/.env`: start it with the same values, e.g. `set -a; . env/.env; set +a; uvicorn service.main:app --port 8100` from `guard/`. A token mismatch between the two shows up as 401/502 from `/api/health` and `/api/admin/*`. Docker compose layers `env/.env` for both services.
 
