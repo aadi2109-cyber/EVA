@@ -38,6 +38,7 @@ async def main() -> int:
         results.append(_line(True, "chat authorised", f"reply={''.join(e.text for e in evs)[:40]!r}"))
     except ModelProviderError as e:
         hint = {"401": "key rejected: create a NEW key at ollama.com and replace it",
+                "429": "key is VALID but the plan's rate/usage limit is reached: wait and retry, or use a smaller model / upgrade the plan",
                 "404": "model name not found: use e.g. gpt-oss:20b (no 'openai/' prefix, no '-cloud' suffix)"}
         h = next((v for k, v in hint.items() if f"status {k}" in str(e)), "")
         results.append(_line(False, "chat authorised", f"{e} {('-> ' + h) if h else ''}"))
