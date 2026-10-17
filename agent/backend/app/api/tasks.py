@@ -5,6 +5,7 @@ Task management API: creation, listing, detail, cancellation, and SSE live strea
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -14,9 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import TaskOrchestrator, get_active_task_orchestrator
 from app.auth.deps import get_current_user
-from app.auth.security import decode_access_token
+from app.auth.security import decode_access_token, fingerprint_access_token
 from app.db.database import get_db_session
-from app.db.models import Message, Task, TaskEvent, User
+from app.db.models import Message, RevokedToken, Task, TaskEvent, User
 from app.sse.broadcaster import get_task_broadcaster
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -169,11 +170,10 @@ async def cancel_task(
 
 async def _sse_user(
     request: Request,
-    access_token: str | None,
     session: AsyncSession,
 ) -> User:
-    """JWT from the Authorization header, or ?access_token= (EventSource cannot set headers)."""
-    token = access_token
+    """Authenticate SSE requests from the Authorization header; never accept query tokens."""
+    token = None
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip()
@@ -182,6 +182,14 @@ async def _sse_user(
     try:
         payload = decode_access_token(token)
     except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication credentials")
+    try:
+        token_expiry = float(payload.get("exp", 0))
+    except (TypeError, ValueError):
+        token_expiry = 0
+    if token_expiry <= datetime.now(timezone.utc).timestamp():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication credentials")
+    if await session.get(RevokedToken, fingerprint_access_token(token)) is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication credentials")
     user = (await session.execute(select(User).where(User.id == payload.get("sub")))).scalar_one_or_none()
     if user is None:
@@ -196,9 +204,8 @@ async def stream_task_events(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     last_event_id_header: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
     last_event_id_query: Annotated[int | None, Query(alias="last_event_id")] = None,
-    access_token: Annotated[str | None, Query()] = None,
 ) -> StreamingResponse:
-    user = await _sse_user(request, access_token, session)
+    user = await _sse_user(request, session)
     task = (await session.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")

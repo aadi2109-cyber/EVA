@@ -16,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 # Set APP_ENV=dev for testing
 os.environ["APP_ENV"] = "dev"
 os.environ["GUARD_TRANSPORT"] = "inprocess"
+os.environ["JWT_SECRET"] = "test-only-random-looking-secret-for-eva-auth-tests-2026"
 # Per-process database so concurrent pytest runs never share (and corrupt) one SQLite file.
 _TEST_DB_DIR = tempfile.mkdtemp(prefix="eva-test-db-")
 atexit.register(shutil.rmtree, _TEST_DB_DIR, ignore_errors=True)

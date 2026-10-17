@@ -13,13 +13,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env", "../../env/.env.example"),
+        # Load committed defaults first and local overrides last when started from
+        # agent/backend, matching the documented env/.env configuration path.
+        env_file=("../../env/.env.example", "../../env/.env", "../.env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     APP_ENV: Literal["dev", "eval", "prod"] = "dev"
-    JWT_SECRET: str = "dev-jwt-secret-key-must-be-at-least-32-chars-long!"
+    JWT_SECRET: str = ""
+    FRONTEND_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     DATABASE_URL: str = "sqlite+aiosqlite:///./agent.db"
     WORKSPACE_ROOT: str = "./workspace"
 
@@ -34,6 +37,9 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/oauth/gmail/callback"
     TOKEN_ENC_KEY: str = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="
     GMAIL_SEND_ALLOWLIST: str = ""
+
+    MINIMOTH_API_KEY: str = ""
+    MINIMOTH_BASE_URL: str = "https://api.minimoth.dev"
 
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
@@ -62,6 +68,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_invariants(self) -> Settings:
+        if len(self.JWT_SECRET.encode("utf-8")) < 32 or self.JWT_SECRET.lower().startswith("replace-with-"):
+            raise ValueError("JWT_SECRET must be set to a random secret of at least 32 bytes")
+        if self.APP_ENV == "prod":
+            origins = [origin.strip() for origin in self.FRONTEND_ORIGINS.split(",") if origin.strip()]
+            if not origins or "*" in origins or any(not origin.startswith("https://") for origin in origins):
+                raise ValueError("APP_ENV=prod requires explicit HTTPS FRONTEND_ORIGINS without wildcards")
+            if not self.MINIMOTH_API_KEY:
+                raise ValueError("APP_ENV=prod requires MINIMOTH_API_KEY")
+
         # Hard Rule 1: GUARD_PROFILE=off|basic is allowed only when APP_ENV=eval
         if self.GUARD_PROFILE in ("off", "basic") and self.APP_ENV != "eval":
             raise ValueError(
