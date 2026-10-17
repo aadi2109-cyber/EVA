@@ -92,3 +92,12 @@ def test_approval_persistence_failure_denies_instead_of_allowing(url, monkeypatc
     monkeypatch.setattr(g._store, "put_approval", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk full")))
     r = _send(g, cid="c2", approval_id=aid)
     assert r.decision == "DENY" and "GUARD_ERROR" in [x.value for x in r.reasons]
+
+
+def test_approval_expires_in_ten_minutes_not_policy_lifetime(url):
+    from datetime import datetime, timezone
+    g = Guard(db_url=url); _policy(g)
+    a = _send(g).approval
+    left = (a.expires_at - datetime.now(timezone.utc)).total_seconds() / 60
+    assert 9.5 < left <= 10.0
+    assert g._approvals.ttl_minutes == 10
