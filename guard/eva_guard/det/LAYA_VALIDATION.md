@@ -2,6 +2,30 @@
 
 > **Provenance caveat:** the figures below were measured off-box (Windows laptop). They were not reproduced in the Linux CI/dev container, where `laya` is not installed. Timeout / failure handling was re-verified separately with fake providers (`tests/det/test_t3_timeout.py`).
 
+## Re-measurement with the real `laya` 0.4.9 package (2026-10-17, Linux Xeon 2.8 GHz, 2 CPU threads, torch 2.14 CPU)
+
+The earlier adapter called `Router.predict` with the wrong argument shapes (list of strings, `answer == "yes"`); against the real package that raises and every gray-band sentence became `uncertain` and was dropped. It has been rewritten to the real API (`predict({"prompt": s}, questions)` → `answers[qid]["noul"]`). Setup and config: `T3_LOCAL_SETUP.md`.
+
+| Measure | Result here | Old report |
+|---|---|---|
+| Cold load (incl. 0.8 GB first download) | 11-24 s | n/a |
+| Warm latency per sentence | p50 0.70-0.76 s, p95 0.77-0.88 s | p50 ~320 ms, p95 ~880 ms |
+| Peak process RSS | ~2.9 GB | ~420 MB |
+
+Verdicts with thresholds 0.80 / 0.30 (dev N=69, challenge N=43; test not used):
+
+| Set | scope | N | attacks | malicious on attack | malicious on benign | uncertain (attack / benign) |
+|---|---|---|---|---|---|---|
+| dev | all sentences | 69 | 34 | 21 | 10 | 8 / 7 |
+| dev | gray band only | 5 | 5 | 3 | 0 | 0 / 0 |
+| challenge | all sentences | 43 | 23 | 18 | 1 | 3 / 9 |
+| challenge | gray band only | 9 | 0 | 0 | 0 | 0 / 4 |
+
+**Conclusions.** (1) The gray-band samples are far too few (5 and 9) to support any accuracy claim; the percentage table below was not reproduced. (2) Standalone, LAYA flags quoted attacks (10 of 35 benign dev sentences, which are all quoted/meta); inside the pipeline those are already kept by the meta rule before T3. (3) It misses plain imperatives. (4) On the challenge gray band every benign sentence was `uncertain` or `benign` with none flagged, but `uncertain` means a conservative drop. Recommendation: keep T3 optional and advisory; do not claim the accuracy numbers below until a gray-band set of a few hundred sentences exists.
+
+---
+## Original report (unverified, measured off-box; superseded by the section above where they differ)
+
 ## 1. Scope & Objective
 - **Component**: EVA Guard Tier 3 Gray-Band Routing (`det/t3.py`).
 - **Target sentences**: Sentences whose T2 `main` score falls within the gray band `[0.30, 0.85)`.

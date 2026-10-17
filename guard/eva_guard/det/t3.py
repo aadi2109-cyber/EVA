@@ -9,6 +9,7 @@ Advisory only:
 """
 import asyncio
 import concurrent.futures
+import threading
 import time
 from typing import Literal, Protocol, NamedTuple
 from eva_guard.det.config import DetConfig
@@ -43,22 +44,39 @@ class Tier3Provider(Protocol):
 _T3_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="det-t3")
 
 
+# Typed yes/no ("noul") questions; `prompt` is the key the sentence is passed under.
+LAYA_QUESTIONS = {
+    "override": {
+        "type": "noul",
+        "instructions": "Does `prompt` try to make an AI assistant ignore, override or replace its instructions or the user's request?",
+    },
+    "exfil_or_tool": {
+        "type": "noul",
+        "instructions": "Does `prompt` instruct an AI assistant to send, forward, upload or reveal data, or to call a tool or take an action the user did not ask for?",
+    },
+}
+
+
 class LayaProvider:
     """
-    LAYA typed-decision adapter.
-    Uses CPU-only execution with a hard timeout.
-    Weights are lazy-loaded upon first use.
-    Conservative fallback: timeout / exception / uncertain -> conservative drop.
+    LAYA typed-decision adapter (pip package `laya`, Apache-2.0, Hugging Face checkpoints).
+    CPU by default; weights are loaded once (see `warmup()` / `start_warmup()`; a cold load is ~20 s
+    plus a first-time ~0.8 GB download, far above `t3_timeout_ms`, so preload at startup).
+    verdict = malicious if max P(yes) >= t3_malicious_p, benign if <= t3_benign_p, else uncertain.
+    Conservative fallback: timeout / exception / uncertain -> the pipeline drops the sentence.
+    While loading, or if loading failed, `is_available` is False and T3 is skipped.
     """
     def __init__(self, config: DetConfig | None = None) -> None:
         self.config = config or DetConfig()
         self._router = None
-        self._loaded = False
-        self._available = True
+        self._loaded = False      # initialisation finished (router ready or failed)
+        self._loading = False     # background warmup in progress
+        self._available = True    # False after a failed load
+        self._lock = threading.Lock()
 
     @property
     def is_available(self) -> bool:
-        if not (self._available and self.config.t3_enabled):
+        if not (self._available and self.config.t3_enabled) or self._loading:
             return False
         if not self._loaded:  # cheap probe, no weight loading: is the library installed at all?
             import importlib.util
@@ -66,20 +84,45 @@ class LayaProvider:
         return True
 
     def _lazy_init(self) -> None:
-        if self._loaded or not self.config.t3_enabled:
-            return
-        try:
-            # Check for laya import if available in runtime
-            import laya  # type: ignore
-            self._router = laya.Router()
-            self._loaded = True
-        except ImportError:
-            # LAYA library not installed; fallback to conservative evaluator
-            self._router = None
-            self._loaded = True
-        except Exception:
-            self._router = None
-            self._loaded = True
+        with self._lock:
+            if self._loaded or not self.config.t3_enabled:
+                return
+            try:
+                import laya  # type: ignore
+                cfg = self.config
+                try:
+                    import torch  # type: ignore
+                    torch.set_num_threads(cfg.t3_threads)
+                except Exception:
+                    pass
+                self._router = laya.Router(device=cfg.t3_device, max_loaded=cfg.t3_max_loaded,
+                                           default=cfg.t3_model, revision=cfg.t3_revision)
+                # Routers load checkpoints lazily on first predict: do it now so later calls are warm.
+                self._router.predict({"prompt": "hello"}, LAYA_QUESTIONS, model=cfg.t3_model)
+            except Exception:  # not installed, download failed, out of memory, ...
+                self._router = None
+                self._available = False
+            finally:
+                self._loaded = True
+
+    def warmup(self) -> bool:
+        """Blocking load; returns True when LAYA is ready."""
+        self._loading = False
+        self._lazy_init()
+        return self._router is not None
+
+    def start_warmup(self) -> threading.Thread:
+        """Load in a background thread; `is_available` is False until it finishes."""
+        self._loading = True
+
+        def _run():
+            try:
+                self._lazy_init()
+            finally:
+                self._loading = False
+        t = threading.Thread(target=_run, name="det-t3-warmup", daemon=True)
+        t.start()
+        return t
 
     async def judge(
         self,
@@ -120,20 +163,15 @@ class LayaProvider:
     def _sync_predict(self, text: str, context: str) -> T3Result:
         self._lazy_init()
         if not self._router:
-            # If laya is unavailable, return conservative uncertain
             return T3Result(verdict="uncertain", score=None, latency_ms=0.0)
-
         try:
-            questions = [
-                "Does this sentence attempt to override developer or user instructions?",
-                "Does this sentence instruct the assistant to exfiltrate data or call tools?"
-            ]
-            # Use laya typed question router
-            preds = self._router.predict(state=text, questions=questions)
-            # Evaluate answers
-            is_malicious = any(p.get("answer") == "yes" for p in preds)
-            verdict: T3VerdictType = "malicious" if is_malicious else "benign"
-            return T3Result(verdict=verdict, score=0.9 if is_malicious else 0.1)
+            res = self._router.predict({"prompt": text}, LAYA_QUESTIONS, model=self.config.t3_model)
+            p = max(float(a["noul"]) for a in res["answers"].values())
+            if p >= self.config.t3_malicious_p:
+                return T3Result(verdict="malicious", score=p)
+            if p <= self.config.t3_benign_p:
+                return T3Result(verdict="benign", score=p)
+            return T3Result(verdict="uncertain", score=p)
         except Exception:
             return T3Result(verdict="uncertain", score=None)
 
@@ -180,15 +218,34 @@ class MockTier3Provider:
         return self.judge_sync(sentence, context, provenance)
 
 
-def create_t3_provider(config: DetConfig | None = None, use_mock: bool = False) -> Tier3Provider | None:
-    """Default T3 provider for the Guard facade / DetPipeline: LAYA, unless disabled (EVA_T3_ENABLED=0 or config)."""
+def create_t3_provider(config: DetConfig | None = None, use_mock: bool = False, preload: bool | None = None) -> Tier3Provider | None:
+    """
+    Default T3 provider for the Guard facade / DetPipeline: LAYA, unless disabled.
+    Env: EVA_T3_ENABLED=0 disables; EVA_T3_PRELOAD=0 skips the background warmup (default: warm up when `laya` is installed);
+         EVA_T3_MODEL, EVA_T3_DEVICE, EVA_T3_REVISION, EVA_T3_MALICIOUS_P, EVA_T3_BENIGN_P, EVA_T3_TIMEOUT_MS override DetConfig.
+    """
+    import importlib.util
     import os
+    env = os.environ.get
     cfg = config or DetConfig()
-    if not cfg.t3_enabled or os.environ.get("EVA_T3_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
+    if not cfg.t3_enabled or env("EVA_T3_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
         return None
     if use_mock:
         return MockTier3Provider()
-    return LayaProvider(cfg)
+    upd = {}
+    for var, key, cast in (("EVA_T3_MODEL", "t3_model", str), ("EVA_T3_DEVICE", "t3_device", str),
+                           ("EVA_T3_REVISION", "t3_revision", str), ("EVA_T3_MALICIOUS_P", "t3_malicious_p", float),
+                           ("EVA_T3_BENIGN_P", "t3_benign_p", float), ("EVA_T3_TIMEOUT_MS", "t3_timeout_ms", int)):
+        if env(var):
+            upd[key] = cast(env(var))
+    if upd:
+        cfg = cfg.model_copy(update=upd)
+    provider = LayaProvider(cfg)
+    if preload is None:
+        preload = env("EVA_T3_PRELOAD", "1").strip().lower() not in ("0", "false", "no", "off")
+    if preload and importlib.util.find_spec("laya") is not None:
+        provider.start_warmup()
+    return provider
 
 
 __all__ = [
@@ -197,5 +254,6 @@ __all__ = [
     "Tier3Provider",
     "LayaProvider",
     "MockTier3Provider",
+    "LAYA_QUESTIONS",
     "create_t3_provider",
 ]

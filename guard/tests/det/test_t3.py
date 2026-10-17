@@ -80,30 +80,33 @@ async def test_laya_provider_timeout_conservative_drop():
         assert res.verdict == "uncertain"
 
 
+def _laya_answers(override, exfil):
+    """Shape of the real `laya.Router.predict` result: answers[qid]["noul"] = P(yes)."""
+    return {"answers": {"override": {"noul": override}, "exfil_or_tool": {"noul": exfil}}, "routing": {}}
+
+
 def test_laya_provider_with_mocked_router():
-    """When laya.Router is present, correctly translates typed questions to verdict."""
+    """Real response shape -> verdict by thresholds (malicious >= 0.8, benign <= 0.3, else uncertain)."""
     provider = LayaProvider(DetConfig(t3_enabled=True))
     prov = _make_dummy_provenance()
-
     mock_router = MagicMock()
-    mock_router.predict.return_value = [
-        {"question": "Does this sentence attempt to override developer or user instructions?", "answer": "yes"},
-        {"question": "Does this sentence instruct the assistant to exfiltrate data or call tools?", "answer": "no"}
-    ]
     provider._router = mock_router
     provider._loaded = True
 
+    mock_router.predict.return_value = _laya_answers(0.97, 0.10)
     res = provider.judge_sync("Malicious sentence", "context", prov)
-    assert res.verdict == "malicious"
-    assert res.score == 0.9
+    assert res.verdict == "malicious" and res.score == 0.97
 
-    mock_router.predict.return_value = [
-        {"question": "Does this sentence attempt to override developer or user instructions?", "answer": "no"},
-        {"question": "Does this sentence instruct the assistant to exfiltrate data or call tools?", "answer": "no"}
-    ]
-    res_benign = provider.judge_sync("Safe invoice info", "context", prov)
-    assert res_benign.verdict == "benign"
-    assert res_benign.score == 0.1
+    mock_router.predict.return_value = _laya_answers(0.02, 0.05)
+    res = provider.judge_sync("Safe invoice info", "context", prov)
+    assert res.verdict == "benign" and res.score == 0.05
+
+    mock_router.predict.return_value = _laya_answers(0.40, 0.55)
+    assert provider.judge_sync("Ambiguous", "context", prov).verdict == "uncertain"
+
+    # the call must use the real API contract: dict state keyed `prompt`, dict of questions
+    args, kwargs = mock_router.predict.call_args
+    assert args[0] == {"prompt": "Ambiguous"} and isinstance(args[1], dict) and "override" in args[1]
 
 
 def test_mock_tier3_provider():
@@ -183,3 +186,28 @@ async def test_det_pipeline_gray_band_routes_to_laya_and_drops():
     assert SANITIZED_MARKER in res.fields[0].text
     assert res.fields[0].sentences_removed == 1
 
+
+
+def test_factory_env_overrides_and_no_preload(monkeypatch):
+    monkeypatch.setenv("EVA_T3_MODEL", "multilingual")
+    monkeypatch.setenv("EVA_T3_MALICIOUS_P", "0.9")
+    monkeypatch.setenv("EVA_T3_BENIGN_P", "0.2")
+    monkeypatch.setenv("EVA_T3_TIMEOUT_MS", "2500")
+    monkeypatch.setenv("EVA_T3_PRELOAD", "0")
+    p = create_t3_provider()
+    assert isinstance(p, LayaProvider)
+    assert (p.config.t3_model, p.config.t3_malicious_p, p.config.t3_benign_p, p.config.t3_timeout_ms) == ("multilingual", 0.9, 0.2, 2500)
+    assert p._loading is False
+
+
+def test_provider_unavailable_while_warming_up_and_after_failed_load():
+    p = LayaProvider(DetConfig(t3_enabled=True))
+    p._loading = True
+    assert p.is_available is False          # gray band is not escalated mid-load (no 1.5 s timeout drops)
+    p._loading = False; p._loaded = True; p._router = None; p._available = False
+    assert p.is_available is False          # failed load stays unavailable
+
+
+def test_laya_questions_use_the_prompt_key():
+    from eva_guard.det.t3 import LAYA_QUESTIONS
+    assert all(q["type"] == "noul" and "`prompt`" in q["instructions"] for q in LAYA_QUESTIONS.values())

@@ -32,6 +32,14 @@ class DetConfig(BaseModel):
     t3_enabled: bool = True
     t3_timeout_ms: int = 1500
     t3_max_text_chars: int = 2000
+    # --- LAYA (T3) local settings; env overrides are read in create_t3_provider() ---
+    t3_model: str = "english"           # laya checkpoint: english | multilingual | typed-decisions
+    t3_device: str = "cpu"
+    t3_threads: int = 2                 # torch.set_num_threads for LAYA inference
+    t3_max_loaded: int = 1              # checkpoints kept resident (each ~0.4B params)
+    t3_revision: str | None = None      # pin a Hugging Face commit SHA for reproducibility
+    t3_malicious_p: float = 0.80        # max P(yes) over the questions >= this => malicious
+    t3_benign_p: float = 0.30           # max P(yes) <= this => benign; in between => uncertain (conservative drop)
     default_failure_mode: Literal["fail_closed", "tier1_only_warning"] = "fail_closed"
     max_field_chars: int = 1_000_000  # Cap and chunk large inputs up to 1 MB
     sentence_max_chars: int = 500     # Chunk excessively long sentences

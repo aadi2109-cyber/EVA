@@ -36,6 +36,11 @@ bench = [
     "agentdojo>=0.1.35",  # eval/det/agentdojo_bench.py (offline) and agentdojo_live.py (needs an LLM API key)
 ]
 
+laya = [
+    "laya>=0.4.9",          # T3 gray-band judge (Apache-2.0); also needs a CPU torch build, see eva_guard/det/T3_LOCAL_SETUP.md
+    "torch>=2.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["eva_guard"]
 
