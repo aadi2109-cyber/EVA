@@ -31,3 +31,5 @@ Thumbs.db
 # SEC-2 eval outputs
 guard/eval/results.json
 guard/eval/align/results.json
+# AgentDojo run logs
+guard/eval/det/agentdojo_runs/
