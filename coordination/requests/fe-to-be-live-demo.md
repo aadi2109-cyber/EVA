@@ -32,9 +32,9 @@
 |---|---|---|
 | 1 | Demo model switch | BE: `MODEL_PROVIDER=scripted` (`app/model/factory.py`; refused when `APP_ENV=prod`). Scripts for S1/S2/S4 keyed on the request text. |
 | 2 | `tool.output` payload doc | doc 02 §5 (both copies) + `contracts/CHANGES.md`: `sanitized_output` string. |
-| 3 | `plan.step` completion | BE orchestrator: each step `running` -> `completed`, or `failed` when held/failed/cancelled mid-step. FE shows failed steps. |
-| 4 | Approval expiry | Guard gateway: `min(now + 10 min, policy.expires_at)`; no policy -> born expired (fail closed). Live: modal starts at ~10:00. |
-| 5 | Eval runs | Guard `GET /admin/v1/eval/runs[/{id}]` read run files from `$EVA_EVAL_RESULTS_DIR` (default `guard/eval/results`, git-ignored); `python -m app.eval.run_scenario <S> --save [DIR]` writes them; FE shows a table. |
+| 3 | `plan.step` completion | BE orchestrator (BE's version won at merge): 0-based `index`, each step `running` -> `completed`, or `failed` when held/failed/cancelled mid-step. FE dropped its inference and renders the statuses as sent; failed steps are shown. |
+| 4 | Approval expiry | Guard gateway: `min(now + engine TTL (10 min), policy.expires_at)`; no policy -> born expired (fail closed). Live: modal starts at ~10:00. BE's strict-xfail `test_guard_gaps` markers were removed (both gaps are fixed). |
+| 5 | Eval runs | SEC-2's `EvalStore` routes (`GET /admin/v1/eval/runs`, `/eval/summary`, `/eval/runs/{id}`) won at merge; my file-based version and `--save` were removed. FE shows the run list and the Baseline/Basic/Full comparison table with its honesty notes. |
 | 6 | Health metrics | Informational, nothing to do. |
 | 7 | `reviewer_id` spoofing | BE admin proxy overwrites `reviewer_id` from the JWT (like `proposed_by`). |
 | 8 | List proposals | Guard `GET /admin/v1/config/proposals[?status=]`; FE uses it instead of deriving from the audit log. |

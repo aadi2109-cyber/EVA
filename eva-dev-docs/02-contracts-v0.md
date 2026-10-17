@@ -204,7 +204,7 @@ Each SSE message: `event: <type>`, `data: {task_id, seq, ts, ...payload}`. `seq`
 |---|---|
 | `task.started` | `{policy: TaskPolicy summary, guard_health}` |
 | `model.delta` | `{text}` (assistant text stream) |
-| `plan.step` | `{index, title, status}`: `index` is 1-based; each step is emitted `running`, then `completed` (or `failed` if the task is held/failed/cancelled mid-step) |
+| `plan.step` | `{index, title, status}`: `index` is 0-based (title "Step 1" is index 0); each step is emitted `running`, then `completed` (or `failed` if the task is held/failed/cancelled mid-step) |
 | `tool.requested` | `{call_id, tool, args, arg_sources}` |
 | `guard.decision` | `{call_id, decision, reasons, reason_text, align}` |
 | `approval.required` | `{approval: ApprovalRequest}` |
@@ -240,7 +240,7 @@ JWT bearer (login returns `access_token`). All JSON.
 
 ## 7. Guard admin API (`/admin/v1/*`, SEC-2)
 
-`GET/POST /config` (versioned; **lowering a posture floor requires a second admin's approval**: `GET /config/proposals[?status=]`, `POST /config/proposals`, `POST /config/proposals/{id}/approve`, `POST /config/proposals/{id}/reject`), `GET/POST/PUT /templates`, `GET /review-queue`, `POST /review-queue/{id}/decision` (records a decision; **never grants tool authority**; the queue is filled by scans that end `quarantined`/`held`, metadata only; `reviewer_id` is set by the BE proxy from the JWT), `GET /audit?task_id=&tool=&decision=&from=&to=`, `GET /audit/verify` (hash-chain check), `GET /audit/export`, `POST /kill-switch` `{scope: tool|template|all_write_tools, target, enabled}`, `GET /health`, `GET /eval/runs`, `GET /eval/runs/{id}` (run files written by `python -m app.eval.run_scenario <S> --save`).
+`GET/POST /config` (versioned; **lowering a posture floor requires a second admin's approval**: `GET /config/proposals[?status=]`, `POST /config/proposals`, `POST /config/proposals/{id}/approve`, `POST /config/proposals/{id}/reject`), `GET/POST/PUT /templates`, `GET /review-queue`, `POST /review-queue/{id}/decision` (records a decision; **never grants tool authority**; the queue is filled by scans that end `quarantined`/`held`, metadata only; `reviewer_id` is set by the BE proxy from the JWT), `GET /audit?task_id=&tool=&decision=&from=&to=`, `GET /audit/verify` (hash-chain check), `GET /audit/export`, `POST /kill-switch` `{scope: tool|template|all_write_tools, target, enabled}`, `GET /health`, `GET /eval/runs[?kind=&limit=&offset=]`, `GET /eval/summary` (latest per kind + Baseline/Basic/Full table), `GET /eval/runs/{id}` (config, versions, failed traces).
 
 Guard service (not admin): `POST /v1/audit/events {task_id,event_type,actor,payload}` lets the BE append allowlisted event types (currently `files.uploaded`) to the audit chain; any other type is rejected 400.
 

@@ -66,6 +66,29 @@ import admin_api.routes as admin_routes
 admin_routes._guard_singleton = guard_instance
 
 
+# Request size limit (rejects before the body is parsed). Scan fields are capped at 1 MB by DET.
+MAX_BODY_BYTES = int(os.getenv("GUARD_MAX_BODY_BYTES", str(4 * 1024 * 1024)))
+
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    declared = request.headers.get("content-length")
+    too_big = False
+    if declared is not None:
+        try:
+            too_big = int(declared) > MAX_BODY_BYTES
+        except ValueError:
+            too_big = True
+    elif request.method in ("POST", "PUT", "PATCH"):
+        body = await request.body()
+        too_big = len(body) > MAX_BODY_BYTES
+    if too_big:
+        return JSONResponse(status_code=413, content={
+            "error": "REQUEST_TOO_LARGE", "message": "Request body exceeds limit",
+            "contract_version": CONTRACT_VERSION})
+    return await call_next(request)
+
+
 # Auth dependency
 SERVICE_TOKEN = os.getenv("GUARD_SERVICE_TOKEN", "dev-guard-token")
 

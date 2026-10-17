@@ -67,7 +67,11 @@ class FilesListTool:
                 for p in target.iterdir()
             ]
 
-        summary_text = "\n".join([f"{e['name']} ({'dir' if e['is_dir'] else f'{e['size']} B'})" for e in entries])
+        def _describe(e: dict[str, Any]) -> str:
+            kind = "dir" if e["is_dir"] else str(e["size"]) + " B"
+            return f"{e['name']} ({kind})"
+
+        summary_text = "\n".join(_describe(e) for e in entries)
         scan_field = ScanField(
             name="file_list",
             text=summary_text or "[Empty directory]",

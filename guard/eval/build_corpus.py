@@ -5,6 +5,7 @@ One record: {id, text, label: attack|benign, family, field, lang, split: train|d
 Size: >= 150 attacks, >= 150 benign (>= 30 quoted/meta hard negatives).
 """
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -325,22 +326,28 @@ def expand_corpus():
             })
             ben_id += 1
 
-    # Assign fixed splits: 60% train, 20% dev, 20% test
-    # Deterministic assignment based on index
-    attacks = [r for r in records if r["label"] == "attack"]
-    benigns = [r for r in records if r["label"] == "benign"]
+    # Assign fixed splits (60/20/20), stratified by (label, family) and grouped by base text so that
+    # prefixed near-duplicates never straddle splits. Deterministic: ordering by sha256(base text).
+    prefixes = tuple(p for p, _ in variations) + tuple(p for p, _ in ben_variations)
 
-    for group in (attacks, benigns):
-        n = len(group)
-        n_train = int(n * 0.6)
-        n_dev = int(n * 0.2)
-        for i, rec in enumerate(group):
-            if i < n_train:
-                rec["split"] = "train"
-            elif i < n_train + n_dev:
-                rec["split"] = "dev"
-            else:
-                rec["split"] = "test"
+    def base(text: str) -> str:
+        for pre in prefixes:
+            if text.startswith(pre):
+                return text[len(pre):]
+        return text
+
+    strata: dict[tuple[str, str], dict[str, list]] = {}
+    for rec in records:
+        strata.setdefault((rec["label"], rec["family"]), {}).setdefault(base(rec["text"]), []).append(rec)
+    for groups in strata.values():
+        keys = sorted(groups, key=lambda k: hashlib.sha256(k.encode()).hexdigest())
+        n = len(keys)
+        n_test = max(1, round(n * 0.2)) if n >= 3 else 0
+        n_dev = max(1, round(n * 0.2)) if n >= 3 else 0
+        for idx, k in enumerate(keys):
+            split = "test" if idx < n_test else "dev" if idx < n_test + n_dev else "train"
+            for rec in groups[k]:
+                rec["split"] = split
 
     return records
 

@@ -1,1 +1,1 @@
-"""Guard tests"""
+"""Guard tests package."""

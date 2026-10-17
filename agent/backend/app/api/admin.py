@@ -40,6 +40,11 @@ async def proxy_admin_request(
     current_user: Annotated[User, Depends(require_admin)],
 ) -> Response:
     """Proxies /api/admin/<path> to Guard /admin/v1/<path>."""
+    if settings.GUARD_TRANSPORT != "http":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Guard admin API requires GUARD_TRANSPORT=http; in-process mode has no admin HTTP facade",
+        )
     if any(seg in ("..", ".") for seg in path.split("/")):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid admin path")
 

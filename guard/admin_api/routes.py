@@ -6,12 +6,8 @@ Owner: SEC-2 (Authority-side Security)
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import re
 import uuid
-from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 
@@ -45,12 +41,6 @@ _active_config: dict[str, Any] = {
 
 _proposals: dict[str, dict[str, Any]] = {}
 
-# Eval run records (one JSON file each), written by the eval runners.
-_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
-
-
-def eval_results_dir() -> Path:
-    return Path(os.getenv("EVA_EVAL_RESULTS_DIR") or Path(__file__).resolve().parents[1] / "eval" / "results")
 
 
 def get_guard_instance():
@@ -296,45 +286,28 @@ def admin_health():
     return guard.health()
 
 
-def _read_run(path: Path) -> dict[str, Any] | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
+def _eval_store():
+    from eval.store import EvalStore
+    # Same DB file as the audit log, so the page reads what this guard instance wrote/sees.
+    return EvalStore(get_guard_instance()._audit.db_path)
 
 
-@router.get("/eval/runs", summary="List Eval Runs")
-def list_eval_runs():
-    """Summaries of eval runs saved by the eval runners (newest first). Empty list when none."""
-    d = eval_results_dir()
-    runs = []
-    if d.is_dir():
-        for f in d.glob("*.json"):
-            data = _read_run(f)
-            if data is None:
-                continue
-            results = data.get("results", [])
-            runs.append(
-                {
-                    "id": f.stem,
-                    "ts": data.get("ts"),
-                    "profile": data.get("profile"),
-                    "scenarios": [r.get("scenario") for r in results],
-                    "passed": sum(1 for r in results if r.get("passed") is True),
-                    "failed": sum(1 for r in results if r.get("passed") is False),
-                    "total": len(results),
-                }
-            )
-    runs.sort(key=lambda r: r.get("ts") or "", reverse=True)
-    return runs
+@router.get("/eval/runs", summary="List Evaluation Runs")
+def list_eval_runs(kind: str | None = Query(None), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    from eval.store import KINDS
+    if kind is not None and kind not in KINDS:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {list(KINDS)}")
+    return _eval_store().list_runs(kind=kind, limit=limit, offset=offset)
 
 
-@router.get("/eval/runs/{run_id}", summary="Get Eval Run")
+@router.get("/eval/summary", summary="Eval Page Payload (latest per kind + Baseline/Basic/Full table)")
+def eval_summary():
+    return _eval_store().summary()
+
+
+@router.get("/eval/runs/{run_id}", summary="Evaluation Run Detail (config, versions, failed traces)")
 def get_eval_run(run_id: str):
-    if not _RUN_ID_RE.match(run_id) or run_id in (".", ".."):
-        raise HTTPException(status_code=400, detail="Invalid run id")
-    data = _read_run(eval_results_dir() / f"{run_id}.json")
-    if data is None:
-        raise HTTPException(status_code=404, detail="Eval run not found")
-    return {"id": run_id, **data}
+    run = _eval_store().get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="eval run not found")
+    return run

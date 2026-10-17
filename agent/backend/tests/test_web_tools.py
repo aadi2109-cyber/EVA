@@ -8,7 +8,7 @@ import pytest
 from app.config import settings
 from app.tools import web
 from app.tools.base import ToolContext
-from app.tools.web import UrlNotAllowed, WebFetchTool, check_url_allowed, set_web_transport
+from app.tools.web import UrlNotAllowed, WebFetchTool, check_url_allowed, set_resolver, set_web_transport
 from env.mock.state import state as mock_state
 
 CTX = ToolContext(task_id="t", user_id="u", call_id="c")
@@ -17,8 +17,14 @@ CTX = ToolContext(task_id="t", user_id="u", call_id="c")
 @pytest.fixture(autouse=True)
 def _clean():
     mock_state.reset()
+
+    async def public_dns(host):  # tests must not depend on real DNS
+        return ["93.184.216.34"]
+
+    set_resolver(public_dns)
     yield
     set_web_transport(None)
+    set_resolver(None)
     mock_state.reset()
 
 
@@ -33,7 +39,9 @@ class Internet:
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.seen.append(request)
-        r = self.routes.get(str(request.url))
+        # The connection is pinned to the resolved IP; route on the ORIGINAL host (SNI).
+        orig = request.url.copy_with(host=request.extensions.get("sni_hostname", request.url.host))
+        r = self.routes.get(str(orig))
         if callable(r):
             return r(request)
         return r or httpx.Response(404, text="nope")
@@ -94,7 +102,7 @@ async def test_redirect_to_disallowed_host_blocked_dev():
     })
     with pytest.raises(UrlNotAllowed):
         await fetch("https://start.test/")
-    assert [str(r.url) for r in net.seen] == ["https://start.test/"]  # metadata host never contacted
+    assert [r.headers["host"] for r in net.seen] == ["start.test"]  # metadata host never contacted
     assert "http://169.254.169.254/latest/meta-data" in mock_state.observe_state()["blocked_http_requests"]
 
 

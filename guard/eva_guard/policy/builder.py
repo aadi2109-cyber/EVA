@@ -22,6 +22,8 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
 URL_REGEX = re.compile(r"https?://[^\s]+")
 
+SANDBOX_TOKEN = "workspace:*"
+WRITE_INTENT_REGEX = re.compile(r"\b(write|save|create|edit|update|overwrite|append|rename|export to)\b", re.I)
 WRITE_TOOLS = {"gmail.send", "gmail.draft", "files.write", "messages.send"}
 
 
@@ -72,7 +74,7 @@ def classify_intent(user_request: str) -> str:
         return "read_only_mailbox"
 
     # Files only
-    if any(k in req_lower for k in ["file", "files", "document", "workspace", "folder"]):
+    if any(k in req_lower for k in ["file", "files", "document", "workspace", "folder", "memo", "notes", ".txt", ".md", ".csv", ".pdf"]):
         return "file_work"
 
     # Web search
@@ -129,6 +131,9 @@ class TaskPolicyBuilder:
         # 2. Filter allowed operations by available_tools from BE
         available = set(req.available_tools)
         tpl_allowed = template.get("allowed_operations", [])
+        # Least privilege: files.write only when the user's own words ask for a write
+        if "files.write" in tpl_allowed and not WRITE_INTENT_REGEX.search(req.user_request):
+            tpl_allowed = [op for op in tpl_allowed if op != "files.write"]
         allowed_ops = [op for op in tpl_allowed if not available or op in available]
 
         # 3. Extract destinations from the user's request
@@ -136,6 +141,9 @@ class TaskPolicyBuilder:
         tpl_dests = template.get("allowed_destinations", [])
         # Combined allowed destinations
         allowed_destinations = list(dict.fromkeys(tpl_dests + extracted_dests))
+        # File tools operate inside the sandbox workspace only (gateway enforces no traversal)
+        if any(op.startswith("files.") for op in allowed_ops) and SANDBOX_TOKEN not in allowed_destinations:
+            allowed_destinations.append(SANDBOX_TOKEN)
 
         # 4. Prohibited side effects: all write tools not explicitly permitted
         prohibited_side_effects = list(template.get("prohibited_side_effects", []))

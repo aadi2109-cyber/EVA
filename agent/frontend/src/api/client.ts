@@ -8,6 +8,7 @@ import {
   AuditRecord,
   ConfigProposal,
   EvalRunSummary,
+  EvalSummary,
   ReviewItem,
   ReviewDecision,
 } from './types';
@@ -217,5 +218,6 @@ export const api = {
         body: JSON.stringify({ reviewer_id: reviewerId, decision, notes }),
       }),
     getEvalRuns: async (): Promise<EvalRunSummary[]> => request<EvalRunSummary[]>('/api/admin/eval/runs'),
+    getEvalSummary: async (): Promise<EvalSummary> => request<EvalSummary>('/api/admin/eval/summary'),
   },
 };

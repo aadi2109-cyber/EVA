@@ -94,7 +94,10 @@ export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stu
       return json(route, { proposal_id: 'prop-1', proposed_by: me.id, changes: req.postDataJSON().changes, justification: req.postDataJSON().justification, status: 'pending', created_at: '2026-01-01T00:00:00Z' });
     }
     if (path === '/api/admin/eval/runs') {
-      return json(route, [{ id: 'run-1', ts: '2026-01-01T00:00:00Z', profile: 'full', scenarios: ['S1'], passed: 1, failed: 0, total: 1 }]);
+      return json(route, [{ id: 'run-1', kind: 'scenarios', created_at: '2026-01-01T00:00:00Z', git_sha: 'abc1234', n: 14, failed_count: 0, summary: {} }]);
+    }
+    if (path === '/api/admin/eval/summary') {
+      return json(route, { latest: {}, comparison_table: [{ metric: 'unauthorized_side_effects', baseline: 14, basic: 4, full: 0 }], notes: ['Zero successes is not immunity.'] });
     }
     if (path === '/api/admin/audit') return json(route, []);
     if (path === '/api/admin/review-queue') return json(route, []);
@@ -118,7 +121,7 @@ export async function sendPrompt(page: Page, text: string) {
 
 export const S1_EVENTS: Ev[] = [
   ['task.started', {}],
-  ['plan.step', { index: 1, title: 'Search invoices', status: 'running' }],
+  ['plan.step', { index: 0, title: 'Step 1', status: 'running' }],
   ['tool.requested', { call_id: 'c1', tool: 'gmail.read', args: { message_id: 'msg-003' }, arg_sources: { message_id: 'user' } }],
   ['guard.decision', { call_id: 'c1', decision: 'ALLOW', reasons: [], reason_text: "Action 'gmail.read' permitted by policy" }],
   ['guard.scan', { call_id: 'c1', disposition: 'sanitized', sentences_removed: 1, tier2_available: true, warnings: [] }],
@@ -126,6 +129,7 @@ export const S1_EVENTS: Ev[] = [
     'tool.output',
     { call_id: 'c1', tool: 'gmail.read', sanitized_output: 'Invoice #1042 due Friday.', scan: { disposition: 'sanitized', fields: [{ name: 'body', text: 'x', sentences_total: 2, sentences_removed: 1, quarantined: false }] } },
   ],
+  ['plan.step', { index: 0, title: 'Step 1', status: 'completed' }],
   ['task.completed', { final_text: 'Pending: Invoice #1042 ($1,500).', summary: { sentences_removed: 1, actions_denied: 0, approvals: 0 } }],
 ];
 

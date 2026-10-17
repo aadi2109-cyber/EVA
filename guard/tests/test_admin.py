@@ -211,29 +211,6 @@ def test_clean_scan_does_not_enqueue():
     assert client.get("/admin/v1/review-queue", headers=AUTH_HEADERS).json() == []
 
 
-# --- eval runs ------------------------------------------------------------------------------------
-
-def test_eval_runs_list_and_get(tmp_path, monkeypatch):
-    import json
-
-    monkeypatch.setenv("EVA_EVAL_RESULTS_DIR", str(tmp_path))
-    assert client.get("/admin/v1/eval/runs", headers=AUTH_HEADERS).json() == []
-
-    (tmp_path / "run-a.json").write_text(json.dumps({"ts": "2026-01-01T00:00:00Z", "profile": "full", "results": [
-        {"scenario": "S1", "passed": True}, {"scenario": "S2", "passed": False}]}))
-    (tmp_path / "run-b.json").write_text(json.dumps({"ts": "2026-02-01T00:00:00Z", "profile": "basic", "results": [{"scenario": "S1", "passed": None}]}))
-    (tmp_path / "broken.json").write_text("{not json")
-
-    runs = client.get("/admin/v1/eval/runs", headers=AUTH_HEADERS).json()
-    assert [r["id"] for r in runs] == ["run-b", "run-a"]
-    assert runs[1] == {"id": "run-a", "ts": "2026-01-01T00:00:00Z", "profile": "full", "scenarios": ["S1", "S2"], "passed": 1, "failed": 1, "total": 2}
-
-    one = client.get("/admin/v1/eval/runs/run-a", headers=AUTH_HEADERS).json()
-    assert one["id"] == "run-a" and len(one["results"]) == 2
-    assert client.get("/admin/v1/eval/runs/missing", headers=AUTH_HEADERS).status_code == 404
-    assert client.get("/admin/v1/eval/runs/..%2Fsecret", headers=AUTH_HEADERS).status_code in (400, 404)
-
-
 # --- backend-originated audit events -----------------------------------------------------------------
 
 def test_record_event_is_allowlisted_and_lands_in_verified_chain():

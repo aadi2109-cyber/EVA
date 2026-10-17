@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { Health, AuditRecord, EvalRunSummary, User } from '../api/types';
+import { Health, AuditRecord, EvalRunSummary, EvalSummary, User } from '../api/types';
 import { ReviewQueue } from '../components/admin/ReviewQueue';
 import { ConfigProposals } from '../components/admin/ConfigProposals';
 
@@ -19,6 +19,7 @@ export const Admin: React.FC<AdminProps> = ({ currentUser }) => {
   const [health, setHealth] = useState<Health | null>(null);
   const [auditRows, setAuditRows] = useState<AuditRecord[]>([]);
   const [evalRuns, setEvalRuns] = useState<EvalRunSummary[] | null>(null);
+  const [evalSummary, setEvalSummary] = useState<EvalSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,10 @@ export const Admin: React.FC<AdminProps> = ({ currentUser }) => {
       .getEvalRuns()
       .then(setEvalRuns)
       .catch(() => setEvalRuns(null));
+    api.admin
+      .getEvalSummary()
+      .then(setEvalSummary)
+      .catch(() => setEvalSummary(null));
   }, []);
 
   const killState = (key: string): boolean => {
@@ -289,31 +294,56 @@ export const Admin: React.FC<AdminProps> = ({ currentUser }) => {
               <thead>
                 <tr className="border-b border-white/10 text-outline">
                   <th className="py-2 px-3">Run</th>
+                  <th className="py-2 px-3">Kind</th>
                   <th className="py-2 px-3">Time</th>
-                  <th className="py-2 px-3">Profile</th>
-                  <th className="py-2 px-3">Scenarios</th>
-                  <th className="py-2 px-3">Result</th>
+                  <th className="py-2 px-3">Cases</th>
+                  <th className="py-2 px-3">Failed</th>
+                  <th className="py-2 px-3">Commit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-on-surface">
                 {evalRuns.map((r) => (
                   <tr key={r.id}>
                     <td className="py-2 px-3 text-primary-container">{r.id}</td>
-                    <td className="py-2 px-3 text-outline">{r.ts ? new Date(r.ts).toLocaleString() : '—'}</td>
-                    <td className="py-2 px-3">{r.profile ?? '—'}</td>
-                    <td className="py-2 px-3">{r.scenarios.filter(Boolean).join(', ') || '—'}</td>
-                    <td className="py-2 px-3">
-                      <span className={r.failed > 0 ? 'text-rose-300' : 'text-emerald-300'}>
-                        {r.passed}/{r.total} passed
-                      </span>
-                      {r.failed > 0 && <span className="text-rose-300"> · {r.failed} failed</span>}
-                    </td>
+                    <td className="py-2 px-3">{r.kind}</td>
+                    <td className="py-2 px-3 text-outline">{new Date(r.created_at).toLocaleString()}</td>
+                    <td className="py-2 px-3">{r.n}</td>
+                    <td className={`py-2 px-3 ${r.failed_count > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{r.failed_count}</td>
+                    <td className="py-2 px-3 text-outline">{r.git_sha ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+
+        {evalSummary?.comparison_table && evalSummary.comparison_table.length > 0 && (
+          <div className="overflow-x-auto pt-2">
+            <table className="w-full text-left text-xs font-mono" aria-label="Baseline, Basic and Full comparison">
+              <thead>
+                <tr className="border-b border-white/10 text-outline">
+                  <th className="py-2 px-3">Metric</th>
+                  <th className="py-2 px-3">Baseline (off)</th>
+                  <th className="py-2 px-3">Basic</th>
+                  <th className="py-2 px-3 text-primary-container">Full</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-on-surface">
+                {evalSummary.comparison_table.map((row) => (
+                  <tr key={row.metric}>
+                    <td className="py-2 px-3 font-sans text-white">{row.metric.replace(/_/g, ' ')}</td>
+                    {(['baseline', 'basic', 'full'] as const).map((k) => (
+                      <td key={k} className="py-2 px-3">{row[k] ?? '—'}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {evalSummary?.notes?.map((n) => (
+          <p key={n} className="text-[11px] text-outline">{n}</p>
+        ))}
       </section>
     </div>
   );

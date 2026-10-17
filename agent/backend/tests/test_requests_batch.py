@@ -1,9 +1,7 @@
 """Backend side of the FE->BE requests: step completion, scripted provider, reviewer identity,
-upload audit (fail closed), request-size cap, and eval run files."""
+upload audit (fail closed), and request-size cap."""
 
 from __future__ import annotations
-
-import json
 
 import httpx
 import pytest
@@ -45,7 +43,7 @@ async def test_each_plan_step_is_completed_explicitly(stub_guard_client):
     assert (await orch.run())["status"] == "completed"
 
     evs = await _events("ps-ok")
-    assert _steps(evs) == [(1, "running"), (1, "completed"), (2, "running"), (2, "completed")]
+    assert _steps(evs) == [(0, "running"), (0, "completed"), (1, "running"), (1, "completed")]
     # each step is closed before the terminal event
     types = [e.event_type for e in evs]
     assert types.index("task.completed") > max(i for i, e in enumerate(evs) if e.event_type == "plan.step")
@@ -65,7 +63,7 @@ async def test_a_step_cut_short_by_a_hold_is_reported_failed(stub_guard_client):
     assert (await orch.run())["status"] == "held"
 
     evs = await _events("ps-held")
-    assert _steps(evs) == [(1, "running"), (1, "failed")]
+    assert _steps(evs) == [(0, "running"), (0, "failed")]
     assert evs[-1].event_type == "task.held"
 
 
@@ -97,7 +95,8 @@ def test_scripted_provider_is_refused_in_prod():
 
 # ---- #7 reviewer identity comes from the JWT --------------------------------------------------------------
 
-async def test_review_decision_reviewer_id_is_overwritten_from_jwt(async_client):
+async def test_review_decision_reviewer_id_is_overwritten_from_jwt(async_client, monkeypatch):
+    monkeypatch.setattr(settings, "GUARD_TRANSPORT", "http")  # the proxy refuses in-process mode
     admin_api.set_admin_transport(httpx.ASGITransport(app=guard_app))
     try:
         login = await async_client.post("/api/auth/login", json={"email": settings.SEED_ADMIN_EMAIL, "password": settings.SEED_ADMIN_PASSWORD})
@@ -190,20 +189,3 @@ async def test_chunked_oversize_body_without_content_length_is_rejected(async_cl
 async def test_upload_limit_middleware_only_applies_to_the_upload_path(async_client):
     r = await async_client.post("/api/auth/login", json={"email": settings.SEED_USER_EMAIL, "password": "x" * 300_000})
     assert r.status_code == 401  # not 413
-
-
-# ---- #5 eval --save ---------------------------------------------------------------------------------------------
-
-async def test_eval_save_writes_a_run_file_the_guard_endpoint_lists(tmp_path, monkeypatch):
-    from app.eval.run_scenario import save_run
-
-    path = save_run({"scenario": "S1", "passed": True, "checks": {"x": True}}, "full", str(tmp_path))
-    data = json.loads(open(path).read())
-    assert data["profile"] == "full" and data["results"][0]["scenario"] == "S1"
-
-    monkeypatch.setenv("EVA_EVAL_RESULTS_DIR", str(tmp_path))
-    from fastapi.testclient import TestClient
-    from service.main import SERVICE_TOKEN, app
-
-    runs = TestClient(app).get("/admin/v1/eval/runs", headers={"Authorization": f"Bearer {SERVICE_TOKEN}"}).json()
-    assert runs[0]["scenarios"] == ["S1"] and runs[0]["passed"] == 1

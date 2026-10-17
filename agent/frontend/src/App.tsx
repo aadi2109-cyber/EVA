@@ -181,22 +181,18 @@ export const App: React.FC = () => {
         break;
 
       case 'plan.step': {
+        // The backend emits running, then completed|failed for each (0-based) index; render as sent.
         setSteps((prev) => {
-          // A new step starting means every earlier running step has finished.
-          const base = prev.map((st) =>
-            st.index < data.index && st.status === 'running' ? { ...st, status: 'completed' as const } : st
-          );
           const step = { index: data.index, title: data.title, status: data.status };
-          const i = base.findIndex((st) => st.index === data.index);
-          if (i >= 0) {
-            base[i] = step;
-            return base;
-          }
-          return [...base, step];
+          const i = prev.findIndex((st) => st.index === data.index);
+          if (i < 0) return [...prev, step];
+          const next = [...prev];
+          next[i] = step;
+          return next;
         });
         break;
-
       }
+
       case 'tool.requested':
         setToolCalls((prev) => [
           ...prev,
@@ -373,14 +369,6 @@ export const App: React.FC = () => {
           summary: data.summary || { sentences_removed: 0, actions_denied: 0, approvals: 0 },
         });
         if (data.final_text) setAssistantText((prev) => prev || data.final_text);
-        // The backend closes every step itself; this only settles steps of mock/legacy streams.
-        setSteps((prev) =>
-          prev.map((st) =>
-            st.status === 'running'
-              ? { ...st, status: event === 'task.completed' ? ('completed' as const) : ('failed' as const) }
-              : st
-          )
-        );
         setIsExecuting(false);
         break;
     }

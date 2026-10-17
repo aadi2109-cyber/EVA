@@ -332,10 +332,17 @@ export interface ConfigProposal {
 
 export interface EvalRunSummary {
   id: string;
-  ts: string | null;
-  profile: string | null;
-  scenarios: (string | null)[];
-  passed: number;
-  failed: number;
-  total: number;
+  kind: "scenarios" | "drills" | "align" | "det";
+  created_at: string;
+  git_sha: string | null;
+  n: number;
+  failed_count: number;
+  summary: Record<string, any>;
+}
+
+export interface EvalSummary {
+  latest: Record<string, EvalRunSummary | null>;
+  /** Baseline / Basic / Full comparison; null until a scenario run exists. Row values may be null. */
+  comparison_table: null | { metric: string; baseline: number | null; basic: number | null; full: number | null }[];
+  notes?: string[];
 }

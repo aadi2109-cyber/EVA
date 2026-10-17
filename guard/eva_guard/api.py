@@ -44,9 +44,10 @@ class Guard:
     Adheres strictly to CONTRACT_VERSION 0.1.0.
     """
 
-    def __init__(self, db_url: str | None = None) -> None:
+    def __init__(self, db_url: str | None = None, t3_provider: Any = None) -> None:
         self.contract_version = CONTRACT_VERSION
         self.db_url = db_url
+        self._t3_provider = t3_provider  # any det.t3.Tier3Provider; None => default LAYA adapter
 
         # Initialise core authority-side modules
         self._audit = AuditLogger(db_url=self.db_url)
@@ -69,7 +70,9 @@ class Guard:
     def _init_det_pipeline(self) -> None:
         try:
             from .det.pipeline import DetPipeline
-            self._det_pipeline = DetPipeline()
+            from .det.t3 import create_t3_provider
+            t3 = self._t3_provider if self._t3_provider is not None else create_t3_provider()
+            self._det_pipeline = DetPipeline(audit=None, t3=t3)
         except (ImportError, AttributeError):
             self._det_pipeline = None
 
@@ -110,6 +113,8 @@ class Guard:
         else:
             from .stub import StubGuard
             resp = StubGuard().scan_tool_result(req)
+            if "DET_PIPELINE_ABSENT" not in resp.warnings:
+                resp.warnings.append("DET_PIPELINE_ABSENT")
 
         # Audit scan event
         try:
@@ -248,12 +253,15 @@ class Guard:
         Reports current health, detector tier availability, kill switches, and metrics.
         """
         tier2_available = True
-        t3_available = True
+        t3_available = False
+        det_metrics: dict[str, float] = {}
         align_available = self._align.is_available()
 
         if self._det_pipeline is not None and hasattr(self._det_pipeline, "is_tier2_available"):
             tier2_available = self._det_pipeline.is_tier2_available()
-            t3_available = getattr(self._det_pipeline, "is_t3_available", lambda: True)()
+            t3_available = getattr(self._det_pipeline, "is_t3_available", lambda: False)()
+            if hasattr(self._det_pipeline, "health"):
+                det_metrics = {k: float(v) for k, v in self._det_pipeline.health().metrics.items()}
 
         status = "ok" if tier2_available else "degraded"
         return Health(
@@ -264,5 +272,5 @@ class Guard:
             config_version=1,
             contract_version=self.contract_version,
             kill_switch=self._gateway.kill_switch,
-            metrics={"escalation_rate": 0.0, "p50_ms": 1.0, "p95_ms": 2.5},
+            metrics={"escalation_rate": 0.0, "p50_ms": 0.0, "p95_ms": 0.0, **det_metrics},
         )
