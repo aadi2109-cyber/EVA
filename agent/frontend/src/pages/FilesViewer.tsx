@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api/client';
 
 /** Client-side guard only; the backend is authoritative. */
-export const MAX_UPLOAD_BYTES = 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 512 * 1024; // matches the backend (and the agent files.read cap)
 import { WorkspaceFile } from '../api/types';
 
 export const FilesViewer: React.FC = () => {
