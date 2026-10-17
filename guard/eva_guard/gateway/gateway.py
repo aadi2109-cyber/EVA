@@ -12,7 +12,7 @@ import json
 import logging
 import urllib.parse
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from contracts.models import (
@@ -95,6 +95,20 @@ def destination_matches(dest: str, pattern: str) -> bool:
         return True
 
     return False
+
+
+DEFAULT_APPROVAL_TTL_MINUTES = 10
+
+
+def _approval_expiry(now: datetime, policy: Any, approvals_engine: Any) -> datetime:
+    """An approval lives for the approval TTL (10 min), never longer than the task policy.
+
+    No policy means nothing authorises the action: the approval is born expired (fail closed).
+    """
+    if policy is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    ttl = getattr(approvals_engine, "ttl_minutes", DEFAULT_APPROVAL_TTL_MINUTES)
+    return min(now + timedelta(minutes=ttl), policy.expires_at)
 
 
 class PolicyGateway:
@@ -308,7 +322,7 @@ class PolicyGateway:
                 exact_action={"tool": req.tool, "args": req.args},
                 arg_sources=arg_sources,
                 action_hash=action_hash,
-                expires_at=now + (policy.expires_at - now if policy else datetime.min.replace(tzinfo=timezone.utc)),
+                expires_at=_approval_expiry(now, policy, approvals_engine),
             )
             if approvals_engine is not None:
                 approvals_engine.register_approval(approval_obj)

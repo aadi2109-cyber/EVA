@@ -68,6 +68,8 @@ test('admin: proposing a config change needs a justification and says a second a
 
   await expect(page.getByRole('status').first()).toContainText('different admin must approve');
   expect(stub.proposals[0]).toMatchObject({ changes: { failure_mode: 'tier1_only_warning' }, justification: 'demo' });
+  await expect(page.getByText('run-1')).toBeVisible(); // eval runs table
+  await expect(page.getByText('1/1 passed')).toBeVisible();
 });
 
 test('files: Upload sends multipart form data, then lists and shows the file', async ({ page }) => {

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     TOKEN_ENC_KEY: str = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="
     GMAIL_SEND_ALLOWLIST: str = ""
 
+    # ollama = real model; scripted = deterministic demo scenarios (never allowed in prod)
+    MODEL_PROVIDER: Literal["ollama", "scripted"] = "ollama"
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
     OLLAMA_MODEL: str = "llama3.1"
@@ -77,6 +79,9 @@ class Settings(BaseSettings):
                 f"EVA_FAIL_* failure-injection flags are forbidden when APP_ENV='{self.APP_ENV}'. "
                 f"They are only permitted when APP_ENV='eval'."
             )
+
+        if self.MODEL_PROVIDER == "scripted" and self.APP_ENV == "prod":
+            raise ValueError("MODEL_PROVIDER='scripted' is forbidden when APP_ENV='prod'.")
 
         # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock
         if self.APP_ENV == "eval" and self.GMAIL_MODE == "real":

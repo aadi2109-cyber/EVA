@@ -6,7 +6,8 @@ vi.mock('../src/api/client', () => ({
   api: {
     admin: {
       getConfig: vi.fn(),
-      getAudit: vi.fn(),
+      listProposals: vi.fn(),
+      rejectProposal: vi.fn(),
       proposeConfig: vi.fn(),
       approveProposal: vi.fn(),
       getReviewQueue: vi.fn(),
@@ -22,16 +23,13 @@ import { ReviewQueue } from '../src/components/admin/ReviewQueue';
 const admin = api.admin as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const CONFIG = { version: 1, minimum_detector_posture: 'tier2_required', failure_mode: 'fail_closed', block_threshold: 0.85, t3_enabled: true, align_enabled: true };
-const proposed = (id: string, by: string) => ({
-  id: `evt-${id}`, ts: '2026-01-01T00:00:00Z', task_id: id, type: 'config.proposed', actor: `admin:${by}`,
-  payload: { changes: { failure_mode: 'tier1_only_warning' }, justification: 'relax' }, config_version: 1, prev_hash: '', hash: '',
+const proposal = (id: string, by: string, status: 'pending' | 'approved' | 'rejected' = 'pending') => ({
+  proposal_id: id, proposed_by: by, changes: { failure_mode: 'tier1_only_warning' }, justification: 'relax',
+  status, created_at: '2026-01-01T00:00:00Z',
 });
-const changed = (id: string) => ({ ...proposed(id, 'x'), id: `evt-c-${id}`, type: 'config.changed' });
 
-function auditFor(rows: { proposed?: any[]; changed?: any[] }) {
-  admin.getAudit.mockImplementation(async ({ eventType }: { eventType: string }) =>
-    eventType === 'config.proposed' ? rows.proposed ?? [] : rows.changed ?? []
-  );
+function proposalsAre(rows: ReturnType<typeof proposal>[]) {
+  admin.listProposals.mockResolvedValue(rows);
 }
 
 beforeEach(() => {
@@ -42,14 +40,14 @@ beforeEach(() => {
 
 describe('ConfigProposals (four-eyes)', () => {
   it('the proposer cannot approve their own proposal; sees a waiting note instead', async () => {
-    auditFor({ proposed: [proposed('prop-1', 'admin-A')] });
+    proposalsAre([proposal('prop-1', 'admin-A')]);
     render(<ConfigProposals currentAdminId="admin-A" />);
     expect(await screen.findByText(/Waiting for a different admin/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Approve as second admin/ })).not.toBeInTheDocument();
   });
 
   it('a different admin can approve, and the call is made with the proposal id', async () => {
-    auditFor({ proposed: [proposed('prop-1', 'admin-A')] });
+    proposalsAre([proposal('prop-1', 'admin-A')]);
     admin.approveProposal.mockResolvedValue({});
     render(<ConfigProposals currentAdminId="admin-B" />);
     await userEvent.click(await screen.findByRole('button', { name: /Approve as second admin/ }));
@@ -58,14 +56,40 @@ describe('ConfigProposals (four-eyes)', () => {
   });
 
   it('proposals already applied are shown as approved with no action', async () => {
-    auditFor({ proposed: [proposed('prop-1', 'admin-A')], changed: [changed('prop-1')] });
+    proposalsAre([proposal('prop-1', 'admin-A', 'approved')]);
     render(<ConfigProposals currentAdminId="admin-B" />);
     expect(await screen.findByText('approved')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Approve as second admin/ })).not.toBeInTheDocument();
   });
 
+  it('a different admin can reject; the call is made and nothing else', async () => {
+    proposalsAre([proposal('prop-1', 'admin-A')]);
+    admin.rejectProposal.mockResolvedValue({});
+    render(<ConfigProposals currentAdminId="admin-B" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+    expect(admin.rejectProposal).toHaveBeenCalledWith('prop-1');
+    expect(await screen.findByRole('status')).toHaveTextContent('rejected. Nothing was changed');
+    expect(admin.approveProposal).not.toHaveBeenCalled();
+  });
+
+  it('the proposer can withdraw their own proposal', async () => {
+    proposalsAre([proposal('prop-1', 'admin-A')]);
+    admin.rejectProposal.mockResolvedValue({});
+    render(<ConfigProposals currentAdminId="admin-A" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Withdraw' }));
+    expect(admin.rejectProposal).toHaveBeenCalledWith('prop-1');
+    expect(await screen.findByRole('status')).toHaveTextContent('withdrawn');
+  });
+
+  it('rejected proposals are shown as rejected with no actions', async () => {
+    proposalsAre([proposal('prop-1', 'admin-A', 'rejected')]);
+    render(<ConfigProposals currentAdminId="admin-B" />);
+    expect(await screen.findByText('rejected')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reject|Approve as second admin|Withdraw/ })).not.toBeInTheDocument();
+  });
+
   it('surfaces the guard error verbatim when approval is rejected', async () => {
-    auditFor({ proposed: [proposed('prop-1', 'admin-A')] });
+    proposalsAre([proposal('prop-1', 'admin-A')]);
     admin.approveProposal.mockRejectedValue(new Error('Four-eyes rule violation'));
     render(<ConfigProposals currentAdminId="admin-B" />);
     await userEvent.click(await screen.findByRole('button', { name: /Approve as second admin/ }));
@@ -73,7 +97,7 @@ describe('ConfigProposals (four-eyes)', () => {
   });
 
   it('submits only changed fields, and only with a justification', async () => {
-    auditFor({});
+    proposalsAre([]);
     admin.proposeConfig.mockResolvedValue({ proposal_id: 'prop-9' });
     render(<ConfigProposals currentAdminId="admin-A" />);
     const submit = await screen.findByRole('button', { name: 'Submit proposal' });

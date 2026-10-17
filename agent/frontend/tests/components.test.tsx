@@ -35,6 +35,14 @@ describe('StepList', () => {
   });
 });
 
+describe('StepList failed state', () => {
+  it('shows a failed step distinctly from completed', () => {
+    render(<StepList steps={[{ index: 1, title: 'Step 1', status: 'failed' }]} />);
+    expect(screen.getByText('✗')).toBeInTheDocument();
+    expect(screen.queryByText('✓')).not.toBeInTheDocument();
+  });
+});
+
 describe('ToolCallCard', () => {
   const base = { callId: 'call-1', tool: 'gmail.read', args: { message_id: 'm1' }, argSources: { message_id: 'user' } };
 

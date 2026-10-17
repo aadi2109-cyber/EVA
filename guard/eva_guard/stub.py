@@ -327,6 +327,10 @@ class StubGuard:
             event_id=f"stub-verify-{uuid.uuid4().hex[:8]}",
         )
 
+    def record_event(self, task_id: str, event_type: str, actor: str, payload: dict) -> str:
+        """Test-only: accepted without persistence."""
+        return f"stub-evt-{uuid.uuid4().hex[:8]}"
+
     def health(self) -> Health:
         """
         Returns healthy posture and stub configuration.

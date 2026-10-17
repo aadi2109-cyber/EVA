@@ -26,17 +26,23 @@
     - Not done: content-type/extension allowlist (viewer decodes as text with replacement), and Starlette spools the multipart body before our 512 KB check, so the size check limits what is stored, not what is received; add a request-size limit at the proxy/ASGI server for a hard cap.
     - doc 02 §6 still needs the new row (contract owner: SEC-2).
 
-## Verification of requests 1-10 against the code (2026-10-17)
+## Status of all requests (2026-10-17): all implemented
 
-| # | Status |
-|---|---|
-| 1 | Confirmed: `orchestrator.py:63` defaults to `OllamaProvider()`; no env switch. |
-| 2 | Confirmed: orchestrator emits `sanitized_output` (line ~407); doc 02 §5 says "sanitized result". Doc fix only. |
-| 3 | Confirmed: only `status: "running"` is ever emitted (`orchestrator.py:157`), index is `step_count` (1-based). |
-| 4 | Confirmed, root cause above. |
-| 5 | Confirmed: no `/eval/runs` route in `guard/admin_api/routes.py`. |
-| 6 | Informational. |
-| 7 | Confirmed: proxy sets `proposed_by` and `X-Admin-User-Id` only; `reviewer_id` is taken from the body. |
-| 8 | Confirmed: only `POST /config/proposals` and `POST .../approve` exist. |
-| 9 | Confirmed: `_review_queue[id]` is only assigned in the decision handler (`routes.py:201`). |
-| 10 | Confirmed: no reject route. |
+| # | Request | Done in |
+|---|---|---|
+| 1 | Demo model switch | BE: `MODEL_PROVIDER=scripted` (`app/model/factory.py`; refused when `APP_ENV=prod`). Scripts for S1/S2/S4 keyed on the request text. |
+| 2 | `tool.output` payload doc | doc 02 §5 (both copies) + `contracts/CHANGES.md`: `sanitized_output` string. |
+| 3 | `plan.step` completion | BE orchestrator: each step `running` -> `completed`, or `failed` when held/failed/cancelled mid-step. FE shows failed steps. |
+| 4 | Approval expiry | Guard gateway: `min(now + 10 min, policy.expires_at)`; no policy -> born expired (fail closed). Live: modal starts at ~10:00. |
+| 5 | Eval runs | Guard `GET /admin/v1/eval/runs[/{id}]` read run files from `$EVA_EVAL_RESULTS_DIR` (default `guard/eval/results`, git-ignored); `python -m app.eval.run_scenario <S> --save [DIR]` writes them; FE shows a table. |
+| 6 | Health metrics | Informational, nothing to do. |
+| 7 | `reviewer_id` spoofing | BE admin proxy overwrites `reviewer_id` from the JWT (like `proposed_by`). |
+| 8 | List proposals | Guard `GET /admin/v1/config/proposals[?status=]`; FE uses it instead of deriving from the audit log. |
+| 9 | Review queue never filled | Guard facade enqueues every `quarantined`/`held` scan (ids, tool, counts, field names; never text). Queue lives on the `Guard` instance. |
+| 10 | Reject proposals | Guard `POST /config/proposals/{id}/reject` (any admin, proposer may withdraw; audit `config.rejected`); FE Reject/Withdraw buttons. Still true: every proposal needs a second admin; the UI does not guess which are "lowering". |
+| 11 | Upload follow-ups | Audit entry via new guard `POST /v1/audit/events` (allowlist `files.uploaded`, fail closed: upload rolled back with 503 if it cannot be recorded); hard request-size cap (ASGI middleware, 413 before buffering, also for chunked bodies); doc 02 §6 row. |
+
+Notes for the owners
+- BE tests must run with `GMAIL_MODE=mock`. A shell that exports `GMAIL_MODE=real` (this sandbox does) makes 19 Gmail tool tests fail with `ReconnectNeeded`; they are environment failures, not regressions.
+- The guard's default audit DB is `./guard.db` relative to the working directory and is never reset; the admin UI shows everything ever written to it.
+- Not done on purpose: content-type allowlist for uploads; a rule for which config proposals need a second admin.

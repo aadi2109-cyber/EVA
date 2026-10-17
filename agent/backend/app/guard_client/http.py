@@ -118,6 +118,15 @@ class HttpGuardClient:
         data = await self._post_with_retry("/v1/verify-state", req.model_dump(mode="json"), timeout=3.0, is_idempotent=True)
         return self._parse(VerifyStateResponse, data, "verify_state")
 
+    async def record_event(self, task_id: str, event_type: str, actor: str, payload: dict) -> str:
+        self._check_injected_down()
+        body = {"task_id": task_id, "event_type": event_type, "actor": actor, "payload": payload}
+        data = await self._post_with_retry("/v1/audit/events", body, timeout=3.0, is_idempotent=False)
+        try:
+            return str(data["event_id"])
+        except (KeyError, TypeError) as e:
+            raise GuardError(f"record_event returned a malformed response: {e}") from e
+
     async def health(self) -> Health:
         self._check_injected_down()
         url = f"{self.base_url}/v1/health"

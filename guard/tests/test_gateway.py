@@ -323,3 +323,31 @@ def test_rule11_clean_action_allowed():
     resp = gw.check(req, policy)
     assert resp.decision == "ALLOW"
     assert resp.reasons == []
+
+
+def test_approval_expires_after_ttl_not_after_task_policy():
+    """Policy lives 2h but an approval must expire after the engine TTL (10 min)."""
+    gw = PolicyGateway()
+    approvals = ApprovalsEngine()  # ttl_minutes=10
+    policy = make_policy(approval_for=["gmail.send"])
+    req = CheckActionRequest(
+        task_id="t-1", call_id="c-1", tool="gmail.send",
+        args={"to": "alice@corp.com", "subject": "s", "body": "b"}, read_only=False,
+    )
+    before = datetime.now(timezone.utc)
+    resp = gw.check(req, policy, approvals_engine=approvals)
+    ttl = resp.approval.expires_at - before
+    assert timedelta(minutes=9, seconds=55) < ttl <= timedelta(minutes=10, seconds=5)
+
+
+def test_approval_never_outlives_a_shorter_policy():
+    gw = PolicyGateway()
+    approvals = ApprovalsEngine()
+    policy = make_policy(approval_for=["gmail.send"])
+    policy.expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)
+    req = CheckActionRequest(
+        task_id="t-1", call_id="c-1", tool="gmail.send",
+        args={"to": "alice@corp.com", "subject": "s", "body": "b"}, read_only=False,
+    )
+    resp = gw.check(req, policy, approvals_engine=approvals)
+    assert resp.approval.expires_at == policy.expires_at

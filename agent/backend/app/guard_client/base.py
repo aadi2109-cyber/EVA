@@ -55,6 +55,10 @@ class GuardClient(Protocol):
         """Verify post-action environment state against policy assertions."""
         ...
 
+    async def record_event(self, task_id: str, event_type: str, actor: str, payload: dict) -> str:
+        """Append a backend-originated event (allowlisted types only) to the guard's audit chain."""
+        ...
+
     async def health(self) -> Health:
         """Query guard operational status and detector posture."""
         ...

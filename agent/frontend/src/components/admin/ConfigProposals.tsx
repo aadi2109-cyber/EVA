@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
-import { AuditRecord } from '../../api/types';
+import { ConfigProposal } from '../../api/types';
 
 type Field =
   | { key: string; label: string; kind: 'select'; options: string[] }
@@ -15,39 +15,13 @@ const FIELDS: Field[] = [
   { key: 'align_enabled', label: 'ALIGN enabled', kind: 'bool' },
 ];
 
-interface ProposalRow {
-  id: string;
-  proposedBy: string;
-  changes: Record<string, any>;
-  justification: string;
-  ts: string;
-  status: 'pending' | 'approved';
-}
-
-const actorId = (actor: string) => actor.replace(/^admin:/, '');
-
-/** Pending/approved proposals are derived from the audit log (config.proposed / config.changed). */
-function deriveProposals(rows: AuditRecord[]): ProposalRow[] {
-  const changed = new Set(rows.filter((r) => r.type === 'config.changed').map((r) => r.task_id));
-  return rows
-    .filter((r) => r.type === 'config.proposed')
-    .map((r) => ({
-      id: r.task_id,
-      proposedBy: actorId(r.actor),
-      changes: r.payload?.changes ?? {},
-      justification: r.payload?.justification ?? '',
-      ts: r.ts,
-      status: changed.has(r.task_id) ? ('approved' as const) : ('pending' as const),
-    }));
-}
-
 interface Props {
   currentAdminId: string;
 }
 
 export const ConfigProposals: React.FC<Props> = ({ currentAdminId }) => {
   const [config, setConfig] = useState<Record<string, any> | null>(null);
-  const [audit, setAudit] = useState<AuditRecord[]>([]);
+  const [proposals, setProposals] = useState<ConfigProposal[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,13 +30,9 @@ export const ConfigProposals: React.FC<Props> = ({ currentAdminId }) => {
 
   const load = useCallback(async () => {
     try {
-      const [c, proposed, changed] = await Promise.all([
-        api.admin.getConfig(),
-        api.admin.getAudit({ eventType: 'config.proposed' }),
-        api.admin.getAudit({ eventType: 'config.changed' }),
-      ]);
+      const [c, list] = await Promise.all([api.admin.getConfig(), api.admin.listProposals()]);
       setConfig(c);
-      setAudit([...proposed, ...changed]);
+      setProposals(list);
       setError(null);
     } catch (e: any) {
       setError(e?.message || 'Failed to load configuration');
@@ -72,8 +42,6 @@ export const ConfigProposals: React.FC<Props> = ({ currentAdminId }) => {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const proposals = useMemo(() => deriveProposals(audit), [audit]);
 
   const changes = useMemo(() => {
     const out: Record<string, any> = {};
@@ -97,6 +65,20 @@ export const ConfigProposals: React.FC<Props> = ({ currentAdminId }) => {
       await load();
     } catch (err: any) {
       setError(err?.message || 'Failed to create proposal');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async (id: string, own: boolean) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await api.admin.rejectProposal(id);
+      setNotice(`Proposal ${id} ${own ? 'withdrawn' : 'rejected'}. Nothing was changed.`);
+      await load();
+    } catch (err: any) {
+      setError(err?.message || 'Rejection failed');
     } finally {
       setBusy(false);
     }
@@ -229,15 +211,17 @@ export const ConfigProposals: React.FC<Props> = ({ currentAdminId }) => {
         <span className="text-[11px] font-bold uppercase tracking-wider text-outline block">Proposals</span>
         {proposals.length === 0 && <p className="text-xs font-mono text-outline">No proposals yet.</p>}
         {proposals.map((p) => {
-          const own = p.proposedBy === currentAdminId;
+          const own = p.proposed_by === currentAdminId;
           return (
-            <div key={p.id} className="p-3 rounded-xl bg-surface-container-lowest border border-white/5 text-xs space-y-1">
+            <div key={p.proposal_id} className="p-3 rounded-xl bg-surface-container-lowest border border-white/5 text-xs space-y-1">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="font-mono font-bold text-primary-container">{p.id}</span>
+                <span className="font-mono font-bold text-primary-container">{p.proposal_id}</span>
                 <span
                   className={`font-mono text-[10px] px-2 py-0.5 rounded-full border uppercase ${
                     p.status === 'approved'
                       ? 'border-emerald-500/40 text-emerald-300'
+                      : p.status === 'rejected'
+                      ? 'border-rose-500/40 text-rose-300'
                       : 'border-amber-500/40 text-amber-300'
                   }`}
                 >
@@ -246,22 +230,30 @@ export const ConfigProposals: React.FC<Props> = ({ currentAdminId }) => {
               </div>
               <div className="font-mono text-white break-all">{JSON.stringify(p.changes)}</div>
               <div className="text-on-surface-variant">
-                {p.justification} · proposed by {own ? 'you' : p.proposedBy}
+                {p.justification} · proposed by {own ? 'you' : p.proposed_by}
               </div>
               {p.status === 'pending' && (
-                <div className="pt-1">
+                <div className="pt-1 flex items-center gap-2 flex-wrap">
                   {own ? (
                     <span className="text-[11px] text-outline">Waiting for a different admin to approve.</span>
                   ) : (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void approve(p.id)}
+                      onClick={() => void approve(p.proposal_id)}
                       className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-200 border border-purple-500/40 font-bold text-[11px] disabled:opacity-40"
                     >
                       Approve as second admin
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void reject(p.proposal_id, own)}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-200 border border-rose-500/40 font-bold text-[11px] disabled:opacity-40"
+                  >
+                    {own ? 'Withdraw' : 'Reject'}
+                  </button>
                 </div>
               )}
             </div>

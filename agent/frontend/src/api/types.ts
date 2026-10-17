@@ -329,3 +329,13 @@ export interface ConfigProposal {
   approved_by?: string | null;
   approved_at?: string | null;
 }
+
+export interface EvalRunSummary {
+  id: string;
+  ts: string | null;
+  profile: string | null;
+  scenarios: (string | null)[];
+  passed: number;
+  failed: number;
+  total: number;
+}

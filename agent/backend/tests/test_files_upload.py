@@ -10,7 +10,8 @@ from app.config import settings
 
 
 @pytest.fixture(autouse=True)
-def _workspace(tmp_path, monkeypatch):
+def _workspace(tmp_path, monkeypatch, stub_guard_client):
+    # stub guard: uploads are audited through it, never into a real ./guard.db
     monkeypatch.setattr(settings, "WORKSPACE_ROOT", str(tmp_path / "ws"))
 
 

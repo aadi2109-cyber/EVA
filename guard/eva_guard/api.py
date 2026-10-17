@@ -7,6 +7,8 @@ Owner: SEC-2 (Authority-side Security)
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from contracts.models import (
@@ -53,6 +55,9 @@ class Guard:
         self._align = AlignClient()
         self._approvals = ApprovalsEngine()
         self._verifier = StateVerifier(audit_logger=self._audit)
+
+        # Items quarantined/held by a scan, awaiting a human decision (metadata only, never raw text).
+        self._review_queue: dict[str, dict[str, Any]] = {}
 
         # In-memory store of active task policies & original requests
         self._policies: dict[str, tuple[TaskPolicy, str]] = {}
@@ -123,7 +128,38 @@ class Guard:
         except Exception as e:
             logger.error(f"Audit failure during scan: {e}")
 
+        if resp.disposition in ("quarantined", "held"):
+            self._enqueue_review(req, resp)
+
         return resp
+
+    def _enqueue_review(self, req: ScanRequest, resp: ScanResponse) -> None:
+        """Queue a flagged scan for human review. Stores identifiers and counts only: the flagged
+        text itself is never kept here (see doc 02 section 8)."""
+        item_id = f"rev-{uuid.uuid4().hex[:10]}"
+        self._review_queue[item_id] = {
+            "id": item_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "task_id": req.task_id,
+            "call_id": req.call_id,
+            "tool": req.tool,
+            "disposition": resp.disposition,
+            "fields": [
+                {"name": f.name, "sentences_removed": f.sentences_removed, "quarantined": f.quarantined}
+                for f in resp.fields
+            ],
+            "warnings": list(resp.warnings),
+        }
+
+    # Event types the backend may write into the tamper-evident log on its own behalf.
+    RECORDABLE_EVENT_TYPES = frozenset({"files.uploaded"})
+
+    def record_event(self, task_id: str, event_type: str, actor: str, payload: dict[str, Any]) -> str:
+        """Append a backend-originated event to the audit chain. Allowlisted types only, so the
+        backend cannot forge guard decisions (gateway.decision, det.scan, ...)."""
+        if event_type not in self.RECORDABLE_EVENT_TYPES:
+            raise ValueError(f"Event type '{event_type}' may not be recorded via record_event")
+        return self._audit.log_event(task_id=task_id, event_type=event_type, actor=actor, payload=payload).id
 
     def check_action(self, req: CheckActionRequest) -> CheckActionResponse:
         """

@@ -204,12 +204,12 @@ Each SSE message: `event: <type>`, `data: {task_id, seq, ts, ...payload}`. `seq`
 |---|---|
 | `task.started` | `{policy: TaskPolicy summary, guard_health}` |
 | `model.delta` | `{text}` (assistant text stream) |
-| `plan.step` | `{index, title, status}` |
+| `plan.step` | `{index, title, status}`: `index` is 1-based; each step is emitted `running`, then `completed` (or `failed` if the task is held/failed/cancelled mid-step) |
 | `tool.requested` | `{call_id, tool, args, arg_sources}` |
 | `guard.decision` | `{call_id, decision, reasons, reason_text, align}` |
 | `approval.required` | `{approval: ApprovalRequest}` |
 | `approval.resolved` | `{approval_id, status}` |
-| `tool.started` / `tool.output` | `{call_id, ...}`; `tool.output` carries the **sanitized** result and `scan: ScanResponse` summary (never raw flagged text) |
+| `tool.started` / `tool.output` | `{call_id, ...}`; `tool.output` carries `{call_id, tool, sanitized_output: string, scan: ScanResponse}`: the **sanitized** result as one string plus the scan summary (never raw flagged text) |
 | `guard.scan` | `{call_id, disposition, sentences_removed, tier2_available, warnings}` |
 | `state.verified` | `{call_id, passed, failures}` |
 | `health.degraded` | `{tier2_available, t3_available, failure_mode}` |
@@ -233,13 +233,18 @@ JWT bearer (login returns `access_token`). All JSON.
 | `GET /api/connectors/gmail/auth-url` | start OAuth |
 | `GET /oauth/gmail/callback` | OAuth redirect target |
 | `DELETE /api/connectors/gmail` | disconnect + delete stored tokens |
-| `GET /api/files?path=` / `GET /api/files/content?path=` | workspace browsing (read-only for UI) |
+| `GET /api/files?path=` / `GET /api/files/content?path=` | workspace browsing (read-only) |
+| `POST /api/files/upload?path=<dir>` (multipart `file`) | upload into the caller's own workspace → `201 {path,size}`. Max 512 KB (413), 25 MB workspace quota (413), existing name 409, missing folder 404, bad name 400, audit entry `files.uploaded` or the upload is rolled back (503) |
 | `GET /api/health` | `{backend, guard: Health}` |
 | `/api/admin/*` | admin only; BE proxies to guard `/admin/v1/*` unchanged (JWT role=admin required) |
 
 ## 7. Guard admin API (`/admin/v1/*`, SEC-2)
 
-`GET/POST /config` (versioned; **lowering a posture floor requires a second admin's approval**: `POST /config/proposals`, `POST /config/proposals/{id}/approve`), `GET/POST/PUT /templates`, `GET /review-queue`, `POST /review-queue/{id}/decision` (records a decision; **never grants tool authority**), `GET /audit?task_id=&tool=&decision=&from=&to=`, `GET /audit/verify` (hash-chain check), `GET /audit/export`, `POST /kill-switch` `{scope: tool|template|all_write_tools, target, enabled}`, `GET /health`, `GET /eval/runs`, `GET /eval/runs/{id}`.
+`GET/POST /config` (versioned; **lowering a posture floor requires a second admin's approval**: `GET /config/proposals[?status=]`, `POST /config/proposals`, `POST /config/proposals/{id}/approve`, `POST /config/proposals/{id}/reject`), `GET/POST/PUT /templates`, `GET /review-queue`, `POST /review-queue/{id}/decision` (records a decision; **never grants tool authority**; the queue is filled by scans that end `quarantined`/`held`, metadata only; `reviewer_id` is set by the BE proxy from the JWT), `GET /audit?task_id=&tool=&decision=&from=&to=`, `GET /audit/verify` (hash-chain check), `GET /audit/export`, `POST /kill-switch` `{scope: tool|template|all_write_tools, target, enabled}`, `GET /health`, `GET /eval/runs`, `GET /eval/runs/{id}` (run files written by `python -m app.eval.run_scenario <S> --save`).
+
+Guard service (not admin): `POST /v1/audit/events {task_id,event_type,actor,payload}` lets the BE append allowlisted event types (currently `files.uploaded`) to the audit chain; any other type is rejected 400.
+
+Approvals expire after 10 minutes (or earlier if the task policy does), not with the task policy.
 
 ## 8. Audit event types (all components emit; SEC-2 stores)
 

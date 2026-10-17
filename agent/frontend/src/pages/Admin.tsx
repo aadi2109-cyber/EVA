@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { Health, AuditRecord, User } from '../api/types';
+import { Health, AuditRecord, EvalRunSummary, User } from '../api/types';
 import { ReviewQueue } from '../components/admin/ReviewQueue';
 import { ConfigProposals } from '../components/admin/ConfigProposals';
 
@@ -18,7 +18,7 @@ interface AdminProps {
 export const Admin: React.FC<AdminProps> = ({ currentUser }) => {
   const [health, setHealth] = useState<Health | null>(null);
   const [auditRows, setAuditRows] = useState<AuditRecord[]>([]);
-  const [evalRuns, setEvalRuns] = useState<any[] | null>(null);
+  const [evalRuns, setEvalRuns] = useState<EvalRunSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -280,13 +280,39 @@ export const Admin: React.FC<AdminProps> = ({ currentUser }) => {
       <section className="p-5 sm:p-6 rounded-2xl bg-surface-container-low border border-white/5 shadow-xl space-y-3">
         <h3 className="font-bold text-white text-base">Evaluation Runs</h3>
         {evalRuns === null ? (
-          <p className="text-xs font-mono text-outline">Eval runs are not available from the guard yet.</p>
+          <p className="text-xs font-mono text-outline">Eval runs could not be loaded.</p>
         ) : evalRuns.length === 0 ? (
           <p className="text-xs font-mono text-outline">No eval runs recorded.</p>
         ) : (
-          <pre className="p-3 rounded-xl bg-surface-container-lowest font-mono text-xs overflow-x-auto max-h-80 border border-white/5">
-            {JSON.stringify(evalRuns, null, 2)}
-          </pre>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-white/10 text-outline">
+                  <th className="py-2 px-3">Run</th>
+                  <th className="py-2 px-3">Time</th>
+                  <th className="py-2 px-3">Profile</th>
+                  <th className="py-2 px-3">Scenarios</th>
+                  <th className="py-2 px-3">Result</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-on-surface">
+                {evalRuns.map((r) => (
+                  <tr key={r.id}>
+                    <td className="py-2 px-3 text-primary-container">{r.id}</td>
+                    <td className="py-2 px-3 text-outline">{r.ts ? new Date(r.ts).toLocaleString() : '—'}</td>
+                    <td className="py-2 px-3">{r.profile ?? '—'}</td>
+                    <td className="py-2 px-3">{r.scenarios.filter(Boolean).join(', ') || '—'}</td>
+                    <td className="py-2 px-3">
+                      <span className={r.failed > 0 ? 'text-rose-300' : 'text-emerald-300'}>
+                        {r.passed}/{r.total} passed
+                      </span>
+                      {r.failed > 0 && <span className="text-rose-300"> · {r.failed} failed</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

@@ -7,6 +7,7 @@ import {
   WorkspaceFile,
   AuditRecord,
   ConfigProposal,
+  EvalRunSummary,
   ReviewItem,
   ReviewDecision,
 } from './types';
@@ -199,6 +200,9 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ proposed_by: 'me', changes, justification }),
       }),
+    listProposals: async (): Promise<ConfigProposal[]> => request('/api/admin/config/proposals'),
+    rejectProposal: async (proposalId: string): Promise<ConfigProposal> =>
+      request(`/api/admin/config/proposals/${encodeURIComponent(proposalId)}/reject`, { method: 'POST' }),
     approveProposal: async (proposalId: string): Promise<ConfigProposal> =>
       request(`/api/admin/config/proposals/${encodeURIComponent(proposalId)}/approve`, { method: 'POST' }),
     getReviewQueue: async (): Promise<ReviewItem[]> => request('/api/admin/review-queue'),
@@ -212,6 +216,6 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ reviewer_id: reviewerId, decision, notes }),
       }),
-    getEvalRuns: async (): Promise<any[]> => request<any[]>('/api/admin/eval/runs'),
+    getEvalRuns: async (): Promise<EvalRunSummary[]> => request<EvalRunSummary[]>('/api/admin/eval/runs'),
   },
 };

@@ -66,7 +66,9 @@ export const FilesViewer: React.FC = () => {
           : status === 409
           ? `${file.name} already exists in this folder.`
           : status === 413
-          ? `${file.name} is too large for the server.`
+          ? (err as Error).message || `${file.name} is too large for the server.`
+          : status === 503
+          ? 'Upload not saved: the audit log is unavailable. Try again shortly.'
           : (err as Error)?.message || 'Upload failed';
       setUploadMsg({ ok: false, text });
     } finally {

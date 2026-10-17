@@ -32,6 +32,8 @@ Notes
 
 ## 2. Test
 
+Run the suite with `GMAIL_MODE=mock`: a shell that exports `GMAIL_MODE=real` makes ~19 Gmail tool tests fail with `ReconnectNeeded` (they are not code failures).
+
 ```bash
 cd /home/user/EVA && PYTHONPATH=.:guard python -m pytest agent/backend/tests -q
 # or: cd agent/backend && uv run pytest
@@ -62,6 +64,7 @@ Mock state is in process memory. To make the CLI reset a **running** API, export
 |---|---|---|
 | `APP_ENV` | dev / eval / prod | `eval` = deterministic lab: mock Gmail only, web restricted to mock server |
 | `GUARD_PROFILE` | full / basic / off | `basic`/`off` only with `APP_ENV=eval`, otherwise the app refuses to start |
+| `MODEL_PROVIDER` | ollama (default) / scripted | `scripted` runs the S1/S2/S4 demo scenarios from the UI with no model key; refused when `APP_ENV=prod` |
 | `GMAIL_MODE` | mock / real | `APP_ENV=eval` with `real` refuses to start |
 | `GUARD_TRANSPORT` | inprocess / http | http needs the guard service and `GUARD_SERVICE_URL`/`GUARD_SERVICE_TOKEN` |
 | `EVA_FAIL_TIER2_DOWN`, `EVA_FAIL_GUARD_UNREACHABLE`, `EVA_FAIL_LAYA_TIMEOUT` | bool | failure injection, eval only |

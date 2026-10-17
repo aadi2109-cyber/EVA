@@ -373,8 +373,13 @@ export const App: React.FC = () => {
           summary: data.summary || { sentences_removed: 0, actions_denied: 0, approvals: 0 },
         });
         if (data.final_text) setAssistantText((prev) => prev || data.final_text);
+        // The backend closes every step itself; this only settles steps of mock/legacy streams.
         setSteps((prev) =>
-          prev.map((st) => (st.status === 'running' ? { ...st, status: 'completed' as const } : st))
+          prev.map((st) =>
+            st.status === 'running'
+              ? { ...st, status: event === 'task.completed' ? ('completed' as const) : ('failed' as const) }
+              : st
+          )
         );
         setIsExecuting(false);
         break;

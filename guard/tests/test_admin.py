@@ -103,3 +103,152 @@ def test_admin_audit_verification():
     verify_resp = client.get("/admin/v1/audit/verify", headers=AUTH_HEADERS)
     assert verify_resp.status_code == 200
     assert verify_resp.json()["valid"] is True
+
+
+# --- proposals list / reject ------------------------------------------------------------------
+
+def _propose(by="admin-alice", changes=None):
+    r = client.post(
+        "/admin/v1/config/proposals",
+        json={"proposed_by": by, "changes": changes or {"block_threshold": 0.9}, "justification": "tune"},
+        headers=AUTH_HEADERS,
+    )
+    assert r.status_code == 200
+    return r.json()["proposal_id"]
+
+
+def test_list_proposals_filters_by_status_and_newest_first():
+    first = _propose()
+    second = _propose()
+    all_ids = [p["proposal_id"] for p in client.get("/admin/v1/config/proposals", headers=AUTH_HEADERS).json()]
+    assert all_ids.index(second) < all_ids.index(first)
+
+    pending = client.get("/admin/v1/config/proposals?status=pending", headers=AUTH_HEADERS).json()
+    assert {first, second} <= {p["proposal_id"] for p in pending}
+    assert all(p["status"] == "pending" for p in pending)
+    assert client.get("/admin/v1/config/proposals?status=bogus", headers=AUTH_HEADERS).status_code == 422
+
+
+def test_reject_proposal_applies_nothing_and_cannot_be_approved_later():
+    cfg_before = client.get("/admin/v1/config", headers=AUTH_HEADERS).json()["version"]
+    pid = _propose(changes={"failure_mode": "tier1_only_warning"})
+
+    rej = client.post(f"/admin/v1/config/proposals/{pid}/reject", headers={**AUTH_HEADERS, "X-Admin-User-Id": "admin-bob"})
+    assert rej.status_code == 200
+    assert rej.json()["status"] == "rejected"
+    assert client.get("/admin/v1/config", headers=AUTH_HEADERS).json()["version"] == cfg_before
+
+    again = client.post(f"/admin/v1/config/proposals/{pid}/approve", headers={**AUTH_HEADERS, "X-Admin-User-Id": "admin-bob"})
+    assert again.status_code == 400
+    assert "rejected" in again.json()["detail"]
+
+
+def test_proposer_may_withdraw_own_proposal_and_unknown_is_404():
+    pid = _propose(by="admin-alice")
+    assert client.post(f"/admin/v1/config/proposals/{pid}/reject", headers={**AUTH_HEADERS, "X-Admin-User-Id": "admin-alice"}).status_code == 200
+    assert client.post("/admin/v1/config/proposals/nope/reject", headers={**AUTH_HEADERS, "X-Admin-User-Id": "x"}).status_code == 404
+
+
+# --- review queue is populated by flagged scans -------------------------------------------------
+
+def _scan(task_id, text):
+    return client.post(
+        "/v1/scan",
+        headers=AUTH_HEADERS,
+        json={
+            "task_id": task_id, "call_id": "c-1", "tool": "gmail.read",
+            "fields": [{"name": "body", "text": text, "provenance": {"source_id": "m1", "source_type": "email", "field": "body", "retrieval_path": ["c-1"], "trust": "untrusted"}}],
+        },
+    )
+
+
+def test_flagged_scan_enqueues_review_item_without_raw_text():
+    from service.main import guard_instance
+
+    guard_instance._review_queue.clear()
+    # Force a flagged disposition regardless of the detector wired in.
+    orig = guard_instance._det_pipeline
+    from contracts.models import DetSummary, SanitizedField, ScanResponse
+
+    class Flagged:
+        def scan(self, req):
+            return ScanResponse(
+                disposition="quarantined",
+                fields=[SanitizedField(name="body", text="[REMOVED] SECRET-RAW-MARKER", sentences_total=2, sentences_removed=1, quarantined=True)],
+                det_summary=DetSummary(t1_signals=[], t2_max_score=0.99, t3_used=False, t3_verdict=None, latency_ms={}),
+                tier2_available=True,
+                event_id="e-1",
+            )
+
+    guard_instance._det_pipeline = Flagged()
+    try:
+        assert _scan("t-rq-1", "whatever").status_code == 200
+    finally:
+        guard_instance._det_pipeline = orig
+
+    items = client.get("/admin/v1/review-queue", headers=AUTH_HEADERS).json()
+    assert len(items) == 1
+    item = items[0]
+    assert item["task_id"] == "t-rq-1" and item["tool"] == "gmail.read" and item["disposition"] == "quarantined"
+    assert item["fields"] == [{"name": "body", "sentences_removed": 1, "quarantined": True}]
+    assert "SECRET-RAW-MARKER" not in str(item)
+
+    # A decision is recorded on that same item and never grants authority.
+    dec = client.post(
+        f"/admin/v1/review-queue/{item['id']}/decision",
+        headers=AUTH_HEADERS,
+        json={"reviewer_id": "admin-alice", "decision": "rejected", "notes": "attack"},
+    )
+    assert dec.status_code == 200
+    assert client.get("/admin/v1/review-queue", headers=AUTH_HEADERS).json()[0]["decision"] == "rejected"
+
+
+def test_clean_scan_does_not_enqueue():
+    from service.main import guard_instance
+
+    guard_instance._review_queue.clear()
+    _scan("t-rq-2", "Invoice #1 is due Friday.")
+    assert client.get("/admin/v1/review-queue", headers=AUTH_HEADERS).json() == []
+
+
+# --- eval runs ------------------------------------------------------------------------------------
+
+def test_eval_runs_list_and_get(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setenv("EVA_EVAL_RESULTS_DIR", str(tmp_path))
+    assert client.get("/admin/v1/eval/runs", headers=AUTH_HEADERS).json() == []
+
+    (tmp_path / "run-a.json").write_text(json.dumps({"ts": "2026-01-01T00:00:00Z", "profile": "full", "results": [
+        {"scenario": "S1", "passed": True}, {"scenario": "S2", "passed": False}]}))
+    (tmp_path / "run-b.json").write_text(json.dumps({"ts": "2026-02-01T00:00:00Z", "profile": "basic", "results": [{"scenario": "S1", "passed": None}]}))
+    (tmp_path / "broken.json").write_text("{not json")
+
+    runs = client.get("/admin/v1/eval/runs", headers=AUTH_HEADERS).json()
+    assert [r["id"] for r in runs] == ["run-b", "run-a"]
+    assert runs[1] == {"id": "run-a", "ts": "2026-01-01T00:00:00Z", "profile": "full", "scenarios": ["S1", "S2"], "passed": 1, "failed": 1, "total": 2}
+
+    one = client.get("/admin/v1/eval/runs/run-a", headers=AUTH_HEADERS).json()
+    assert one["id"] == "run-a" and len(one["results"]) == 2
+    assert client.get("/admin/v1/eval/runs/missing", headers=AUTH_HEADERS).status_code == 404
+    assert client.get("/admin/v1/eval/runs/..%2Fsecret", headers=AUTH_HEADERS).status_code in (400, 404)
+
+
+# --- backend-originated audit events -----------------------------------------------------------------
+
+def test_record_event_is_allowlisted_and_lands_in_verified_chain():
+    ok = client.post(
+        "/v1/audit/events", headers=AUTH_HEADERS,
+        json={"task_id": "user-1", "event_type": "files.uploaded", "actor": "user:u1", "payload": {"path": "a.txt", "size": 3}},
+    )
+    assert ok.status_code == 200 and ok.json()["event_id"]
+    rows = client.get("/admin/v1/audit?event_type=files.uploaded", headers=AUTH_HEADERS).json()
+    assert rows and rows[0]["payload_json"]["path"] == "a.txt"
+    assert client.get("/admin/v1/audit/verify", headers=AUTH_HEADERS).json()["valid"] is True
+
+    forged = client.post(
+        "/v1/audit/events", headers=AUTH_HEADERS,
+        json={"task_id": "t", "event_type": "gateway.decision", "actor": "guard", "payload": {}},
+    )
+    assert forged.status_code == 400
+    assert client.post("/v1/audit/events", json={"task_id": "t", "event_type": "files.uploaded", "actor": "a"}).status_code == 401

@@ -86,9 +86,15 @@ export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stu
     if (path === '/api/admin/config') {
       return json(route, { version: 1, minimum_detector_posture: 'tier2_required', failure_mode: 'fail_closed', block_threshold: 0.85, t3_enabled: true, align_enabled: true });
     }
+    if (path === '/api/admin/config/proposals' && req.method() === 'GET') {
+      return json(route, stub.proposals.map((p, i) => ({ proposal_id: `prop-${i + 1}`, proposed_by: me.id, status: 'pending', created_at: '2026-01-01T00:00:00Z', ...p })));
+    }
     if (path === '/api/admin/config/proposals') {
       stub.proposals.push(req.postDataJSON());
       return json(route, { proposal_id: 'prop-1', proposed_by: me.id, changes: req.postDataJSON().changes, justification: req.postDataJSON().justification, status: 'pending', created_at: '2026-01-01T00:00:00Z' });
+    }
+    if (path === '/api/admin/eval/runs') {
+      return json(route, [{ id: 'run-1', ts: '2026-01-01T00:00:00Z', profile: 'full', scenarios: ['S1'], passed: 1, failed: 0, total: 1 }]);
     }
     if (path === '/api/admin/audit') return json(route, []);
     if (path === '/api/admin/review-queue') return json(route, []);

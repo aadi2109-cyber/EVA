@@ -99,6 +99,14 @@ class InProcessGuardClient:
             logger.error("Guard verify_state failed: %s", e)
             raise GuardError(f"verify_state failed: {e}") from e
 
+    async def record_event(self, task_id: str, event_type: str, actor: str, payload: dict) -> str:
+        self._check_injected_down()
+        try:
+            return self._guard.record_event(task_id, event_type, actor, payload)
+        except Exception as e:
+            logger.error("Guard record_event failed: %s", e)
+            raise GuardError(f"record_event failed: {e}") from e
+
     async def health(self) -> Health:
         self._check_injected_down()
         try:

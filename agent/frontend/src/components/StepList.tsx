@@ -23,6 +23,7 @@ export const StepList: React.FC<StepListProps> = ({ steps }) => {
         {steps.map((step, pos) => {
           const isDone = step.status === 'completed';
           const isRunning = step.status === 'running';
+          const isFailed = step.status === 'failed';
 
           return (
             <div
@@ -30,6 +31,8 @@ export const StepList: React.FC<StepListProps> = ({ steps }) => {
               className={`p-2.5 rounded-lg border flex items-center justify-between text-xs transition-all ${
                 isRunning
                   ? 'bg-surface-container-high border-primary-container/40 text-white shadow-sm'
+                  : isFailed
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
                   : isDone
                   ? 'bg-surface-container/40 border-white/5 text-on-surface'
                   : 'bg-surface-container-lowest/40 border-white/5 text-on-surface-variant'
@@ -38,14 +41,16 @@ export const StepList: React.FC<StepListProps> = ({ steps }) => {
               <div className="flex items-center gap-2.5 min-w-0">
                 <span
                   className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[10px] font-bold ${
-                    isDone
+                    isFailed
+                      ? 'bg-rose-500/30 text-rose-200'
+                      : isDone
                       ? 'bg-emerald-500/20 text-emerald-300'
                       : isRunning
                       ? 'bg-primary-container text-on-primary-container animate-pulse'
                       : 'bg-surface-container-high text-outline'
                   }`}
                 >
-                  {isDone ? '✓' : pos + 1}
+                  {isFailed ? '✗' : isDone ? '✓' : pos + 1}
                 </span>
                 <span className="truncate font-medium">{step.title}</span>
               </div>

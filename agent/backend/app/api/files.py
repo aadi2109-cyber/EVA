@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from app.auth.deps import get_current_user
 from app.config import settings
 from app.db.models import User
+from app.guard_client.factory import get_guard_client
 from app.tools.files import MAX_FILE_BYTES, _get_sandbox_dir, _resolve_safe_path
 
 logger = logging.getLogger(__name__)
@@ -157,8 +158,21 @@ async def upload_file(
         raise
 
     rel = dest.relative_to(sandbox).as_posix()
-    logger.info(
-        "file.uploaded user=%s path=%s size=%d sha256=%s",
-        current_user.id, rel, size, hashlib.sha256(data).hexdigest(),
-    )
+    digest = hashlib.sha256(data).hexdigest()
+
+    # Tamper-evident audit entry in the guard's hash chain. Fail closed like the rest of the system:
+    # if the event cannot be recorded, the upload is rolled back.
+    try:
+        await get_guard_client().record_event(
+            task_id=f"upload:{current_user.id}",
+            event_type="files.uploaded",
+            actor=f"user:{current_user.id}",
+            payload={"path": rel, "size": size, "sha256": digest},
+        )
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        logger.error("Upload rolled back: audit write failed: %s", e)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Audit log unavailable; upload not saved")
+
+    logger.info("file.uploaded user=%s path=%s size=%d sha256=%s", current_user.id, rel, size, digest)
     return {"path": rel, "size": size}

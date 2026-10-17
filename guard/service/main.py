@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Header, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
 from contracts.models import (
@@ -160,6 +161,26 @@ async def verify_state(
 ) -> VerifyStateResponse:
     with LATENCY_HISTOGRAM.labels(endpoint="verify_state").time():
         return guard_instance.verify_state(req)
+
+
+# 2.7 record_event: backend-originated audit entries (allowlisted types only)
+class RecordEventRequest(BaseModel):
+    task_id: str
+    event_type: str
+    actor: str
+    payload: dict[str, Any] = {}
+
+
+@app.post("/v1/audit/events", summary="Record a backend-originated audit event")
+async def record_event(
+    req: RecordEventRequest,
+    token: str = Depends(verify_bearer_token),
+) -> dict[str, str]:
+    try:
+        event_id = guard_instance.record_event(req.task_id, req.event_type, req.actor, req.payload)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return {"event_id": event_id}
 
 
 # 2.6 health

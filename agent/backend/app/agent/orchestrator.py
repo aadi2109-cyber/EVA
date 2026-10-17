@@ -34,7 +34,7 @@ from app.db.models import ApprovalIndex, Message, Task, ToolExecution, User
 from app.guard_client.base import GuardClient, GuardDownError, GuardError
 from app.guard_client.factory import get_guard_client
 from app.model.base import ModelEvent, ModelEventType, ModelProvider
-from app.model.ollama import OllamaProvider
+from app.model.factory import default_model_provider
 from app.sse.broadcaster import get_task_broadcaster
 from app.tools.base import ToolContext
 from app.tools.registry import tool_registry
@@ -60,7 +60,7 @@ class TaskOrchestrator:
         self.user_role = user_role
         self.user_request = user_request
 
-        self.model_provider: ModelProvider = model_provider or OllamaProvider()
+        self.model_provider: ModelProvider = model_provider or default_model_provider(user_request)
         self.guard: GuardClient = guard_client or get_guard_client()
         self.provenance = ProvenanceTracker(task_id=task_id, user_request=user_request)
 
@@ -70,6 +70,7 @@ class TaskOrchestrator:
         self.pending_approval: Any = None
         self.approval_decision: SubmitApprovalResponse | None = None
 
+        self._open_step: int | None = None  # plan step currently 'running'
         self.sentences_removed: int = 0
         self.actions_denied: int = 0
         self.approvals_count: int = 0
@@ -157,6 +158,7 @@ class TaskOrchestrator:
                     SSEEventType.PLAN_STEP,
                     {"index": step_count, "title": f"Step {step_count}", "status": "running"},
                 )
+                self._open_step = step_count
 
                 # Ask the model for the next step
                 tools_spec = tool_registry.to_model_tools()
@@ -429,6 +431,8 @@ class TaskOrchestrator:
                         except Exception as e:
                             logger.error("State verification failed: %s", e)
 
+                await self._close_step("completed")
+
             # Max steps exceeded
             await self._terminate_task("completed", final_text=final_assistant_text or "Task reached maximum execution steps.")
             return {"status": "completed", "final_text": final_assistant_text}
@@ -504,7 +508,17 @@ class TaskOrchestrator:
             session.add(exec_rec)
             await session.commit()
 
+    async def _close_step(self, status: str) -> None:
+        """Emit the final status of the open plan step ('completed' or 'failed'); no-op if none open."""
+        if self._open_step is None:
+            return
+        index, self._open_step = self._open_step, None
+        broadcaster = await get_task_broadcaster(self.task_id)
+        await broadcaster.emit(SSEEventType.PLAN_STEP, {"index": index, "title": f"Step {index}", "status": status})
+
     async def _terminate_task(self, terminal_status: str, final_text: str = "") -> None:
+        # A step cut short by a hold/failure/cancel is reported as failed, not silently completed.
+        await self._close_step("completed" if terminal_status == "completed" else "failed")
         broadcaster = await get_task_broadcaster(self.task_id)
         summary = {
             "sentences_removed": self.sentences_removed,

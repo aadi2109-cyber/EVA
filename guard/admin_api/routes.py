@@ -6,8 +6,12 @@ Owner: SEC-2 (Authority-side Security)
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import re
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 
@@ -40,7 +44,13 @@ _active_config: dict[str, Any] = {
 }
 
 _proposals: dict[str, dict[str, Any]] = {}
-_review_queue: dict[str, dict[str, Any]] = {}
+
+# Eval run records (one JSON file each), written by the eval runners.
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+
+
+def eval_results_dir() -> Path:
+    return Path(os.getenv("EVA_EVAL_RESULTS_DIR") or Path(__file__).resolve().parents[1] / "eval" / "results")
 
 
 def get_guard_instance():
@@ -89,6 +99,40 @@ def propose_config_change(req: ConfigProposalRequest):
         )
     except Exception as e:
         logger.error(f"Audit failure for config proposal: {e}")
+
+    return ConfigProposalResponse(**proposal)
+
+
+@router.get("/config/proposals", response_model=list[ConfigProposalResponse], summary="List Config Proposals")
+def list_config_proposals(status: str | None = Query(None, pattern="^(pending|approved|rejected)$")):
+    rows = [p for p in _proposals.values() if status is None or p["status"] == status]
+    rows.sort(key=lambda p: p["created_at"], reverse=True)
+    return [ConfigProposalResponse(**p) for p in rows]
+
+
+@router.post("/config/proposals/{proposal_id}/reject", response_model=ConfigProposalResponse, summary="Reject Config Proposal")
+def reject_config_proposal(proposal_id: str, rejecter_id: str = Header(..., alias="X-Admin-User-Id")):
+    """Any admin (including the proposer, to withdraw it) may reject a pending proposal. Nothing is applied."""
+    proposal = _proposals.get(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if proposal["status"] != "pending":
+        raise HTTPException(status_code=400, detail=f"Proposal is already {proposal['status']}")
+
+    proposal["status"] = "rejected"
+    proposal["approved_by"] = None
+    proposal["approved_at"] = None
+
+    guard = get_guard_instance()
+    try:
+        guard._audit.log_event(
+            task_id=proposal_id,
+            event_type="config.rejected",
+            actor=f"admin:{rejecter_id}",
+            payload={"proposal_id": proposal_id, "changes": proposal["changes"]},
+        )
+    except Exception as e:
+        logger.error(f"Audit failure for config rejection: {e}")
 
     return ConfigProposalResponse(**proposal)
 
@@ -185,7 +229,8 @@ def set_kill_switch(req: KillSwitchRequest):
 
 @router.get("/review-queue", summary="List Quarantined/Held Review Items")
 def list_review_queue():
-    return list(_review_queue.values())
+    queue = get_guard_instance()._review_queue
+    return sorted(queue.values(), key=lambda i: i.get("created_at", ""), reverse=True)
 
 
 @router.post("/review-queue/{id}/decision", summary="Submit Human Review Decision")
@@ -194,11 +239,12 @@ def submit_review_decision(id: str, req: ReviewDecisionRequest):
     Records a human review decision on flagged or held content.
     CRITICAL PRINCIPLE: Review decisions NEVER grant tool execution authority.
     """
-    item = _review_queue.get(id)
+    queue = get_guard_instance()._review_queue
+    item = queue.get(id)
     if not item:
         # Create an on-demand record if needed
         item = {"id": id, "created_at": datetime.now(timezone.utc).isoformat()}
-        _review_queue[id] = item
+        queue[id] = item
 
     item["reviewer_id"] = req.reviewer_id
     item["decision"] = req.decision
@@ -248,3 +294,47 @@ def export_audit():
 def admin_health():
     guard = get_guard_instance()
     return guard.health()
+
+
+def _read_run(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+@router.get("/eval/runs", summary="List Eval Runs")
+def list_eval_runs():
+    """Summaries of eval runs saved by the eval runners (newest first). Empty list when none."""
+    d = eval_results_dir()
+    runs = []
+    if d.is_dir():
+        for f in d.glob("*.json"):
+            data = _read_run(f)
+            if data is None:
+                continue
+            results = data.get("results", [])
+            runs.append(
+                {
+                    "id": f.stem,
+                    "ts": data.get("ts"),
+                    "profile": data.get("profile"),
+                    "scenarios": [r.get("scenario") for r in results],
+                    "passed": sum(1 for r in results if r.get("passed") is True),
+                    "failed": sum(1 for r in results if r.get("passed") is False),
+                    "total": len(results),
+                }
+            )
+    runs.sort(key=lambda r: r.get("ts") or "", reverse=True)
+    return runs
+
+
+@router.get("/eval/runs/{run_id}", summary="Get Eval Run")
+def get_eval_run(run_id: str):
+    if not _RUN_ID_RE.match(run_id) or run_id in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid run id")
+    data = _read_run(eval_results_dir() / f"{run_id}.json")
+    if data is None:
+        raise HTTPException(status_code=404, detail="Eval run not found")
+    return {"id": run_id, **data}

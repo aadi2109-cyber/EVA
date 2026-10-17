@@ -11,6 +11,8 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.files import MAX_UPLOAD_BYTES
+from app.api.limits import OVERHEAD_BYTES, UploadSizeLimitMiddleware
 from app.api.router import api_router
 from app.auth.seeder import seed_users
 from app.config import settings
@@ -50,6 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(UploadSizeLimitMiddleware, path="/api/files/upload", max_body_bytes=MAX_UPLOAD_BYTES + OVERHEAD_BYTES)
 app.include_router(api_router)
 
 

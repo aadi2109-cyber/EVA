@@ -427,11 +427,34 @@ async def run_scenario(scenario_id: str, profile: str = "full") -> dict[str, Any
         return {"status": "unknown_scenario", "scenario": scenario_id, "passed": False, "checks": {}}
 
 
+def save_run(result: dict[str, Any], profile: str, directory: str | None = None) -> str:
+    """Write one run file in the format the guard's /admin/v1/eval/runs endpoints read."""
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    d = Path(directory or os.getenv("EVA_EVAL_RESULTS_DIR") or Path(__file__).resolve().parents[4] / "guard" / "eval" / "results")
+    d.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    run_id = f"run-{now.strftime('%Y%m%dT%H%M%S')}-{str(result.get('scenario', 'x')).lower()}"
+    path = d / f"{run_id}.json"
+    path.write_text(json.dumps({"ts": now.isoformat(), "profile": profile, "results": [result]}, default=str, indent=2), encoding="utf-8")
+    return str(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="EVA Backend Eval Scenario Runner")
     parser.add_argument("scenario", help="Scenario ID (S1-S8, S10, S11, S12)")
     parser.add_argument("--profile", default="full", choices=["full", "basic", "off"], help="Security profile")
     parser.add_argument("--json", action="store_true", help="Print a final machine-readable JSON line")
+    parser.add_argument(
+        "--save",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="DIR",
+        help="Save the result as a run file the admin UI lists (default dir: $EVA_EVAL_RESULTS_DIR or guard/eval/results)",
+    )
     args = parser.parse_args(argv)
 
     if not hooks.eval_active():
@@ -441,6 +464,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         import json
         print(json.dumps(result, default=str))
+    if args.save is not None:
+        print(f"Saved run: {save_run(result, args.profile, args.save or None)}")
     return 0 if result.get("passed") is not False else 1
 
 

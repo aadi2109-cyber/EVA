@@ -51,9 +51,10 @@ describe('Files page upload', () => {
     [404, 'does not support uploads yet'],
     [405, 'does not support uploads yet'],
     [409, 'already exists'],
-    [413, 'too large for the server'],
+    [413, 'Workspace quota exceeded'],
+    [503, 'audit log is unavailable'],
   ])('maps HTTP %i to a clear message', async (status, text) => {
-    files.upload.mockRejectedValue(new ApiError('x', status));
+    files.upload.mockRejectedValue(new ApiError('Workspace quota exceeded', status));
     render(<FilesViewer />);
     await screen.findByText('This folder is empty.');
     await pick(new File(['a'], 'a.txt'));

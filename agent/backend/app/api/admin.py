@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Annotated
 
 import httpx
@@ -18,6 +19,8 @@ from app.config import settings
 from app.db.models import User
 
 logger = logging.getLogger(__name__)
+
+_REVIEW_DECISION_RE = re.compile(r"^review-queue/[^/]+/decision$")
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -49,14 +52,21 @@ async def proxy_admin_request(
     # Admin identity always comes from the JWT, never from client-supplied fields:
     # four-eyes approval is only meaningful if proposer/approver cannot be spoofed.
     headers["X-Admin-User-Id"] = current_user.id
-    if request.method == "POST" and path.strip("/") == "config/proposals":
+    # Body fields that name the acting admin are always overwritten from the JWT.
+    clean_path = path.strip("/")
+    identity_field = None
+    if request.method == "POST" and clean_path == "config/proposals":
+        identity_field = "proposed_by"
+    elif request.method == "POST" and _REVIEW_DECISION_RE.match(clean_path):
+        identity_field = "reviewer_id"
+    if identity_field:
         try:
             payload = json.loads(body or b"{}")
         except ValueError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
         if not isinstance(payload, dict):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
-        payload["proposed_by"] = current_user.id
+        payload[identity_field] = current_user.id
         body = json.dumps(payload).encode()
 
     try:
