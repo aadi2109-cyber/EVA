@@ -171,14 +171,7 @@ async def test_tool_path_traversal_is_blocked_for_the_model(async_client):
     assert "root:x:" not in blob
 
 
-# ------------------------------------------------------------------ upload: not implemented yet
-@pytest.mark.xfail(strict=True, reason="no upload endpoint or UI exists yet (GET /api/files and /api/files/content only)")
-async def test_upload_endpoint_accepts_a_file_and_it_can_be_read_back(async_client):
-    h, uid = await login(async_client)
-    r = await async_client.post("/api/files/upload", files={"file": ("hello.txt", b"hi there", "text/plain")}, headers=h)
-    assert r.status_code in (200, 201)
-    got = (await async_client.get("/api/files/content", params={"path": "hello.txt"}, headers=h)).json()
-    assert got["content"] == "hi there"
+# (upload is covered in tests/test_files_upload.py)
 
 
 # ------------------------------------------------------------------ demo fixtures must not leak outside dev/eval

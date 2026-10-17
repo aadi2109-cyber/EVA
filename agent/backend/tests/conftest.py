@@ -31,7 +31,7 @@ os.environ["SEED_ADMIN_PASSWORD"] = "AdminPassword123!"
 os.environ["SEED_USER_EMAIL"] = "user@eva.local"
 os.environ["SEED_USER_PASSWORD"] = "UserPassword123!"
 os.environ["GUARD_SERVICE_TOKEN"] = "dev-guard-token"
-os.environ["JWT_SECRET"] = "dev-jwt-secret-key-must-be-at-least-32-chars-long!"
+os.environ["JWT_SECRET"] = "test-only-random-looking-secret-for-eva-auth-tests-2026"
 os.environ["TOKEN_ENC_KEY"] = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="
 # Per-process database so concurrent pytest runs never share (and corrupt) one SQLite file.
 _TEST_DB_DIR = Path(tempfile.mkdtemp(prefix="eva-test-db-")).resolve()

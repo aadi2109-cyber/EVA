@@ -1,5 +1,5 @@
 import { SSEEventType, SSEMessage } from './types';
-import { getAuthToken } from './client';
+import { getAuthToken, setAuthToken } from './client';
 
 const TERMINAL = new Set(['task.completed', 'task.failed', 'task.held', 'task.cancelled']);
 
@@ -48,6 +48,12 @@ export class TaskEventStream {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          setAuthToken(null);
+          window.dispatchEvent(new CustomEvent('eva:auth-expired'));
+          this.close();
+          return;
+        }
         throw new Error(`SSE HTTP error ${response.status}`);
       }
 

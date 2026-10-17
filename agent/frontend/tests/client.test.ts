@@ -20,7 +20,59 @@ describe('api client', () => {
     const { user } = await api.auth.login('user@eva.local', 'pw');
     expect(getAuthToken()).toBe('tok');
     expect(localStorage.getItem('eva_token')).toBe('tok');
-    expect(user).toEqual({ id: 'u1', email: 'user@eva.local', role: 'user', name: 'user' });
+    expect(user).toEqual({ id: 'u1', email: 'user@eva.local', phone: null, role: 'user', name: 'user' });
+  });
+
+  it('sends an OTP request only to EVA and includes the normalized phone', async () => {
+    const f = vi.fn().mockResolvedValue(json({ message: 'If eligible, sent', otp_id: 'otp-id' }));
+    vi.stubGlobal('fetch', f);
+    await api.auth.sendOtp('+919876543210');
+    expect(f.mock.calls[0][0]).toBe('/api/auth/otp/send');
+    expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ phone: '+919876543210' });
+    expect(f.mock.calls[0][1].headers.get('X-Api-Key')).toBeNull();
+  });
+
+  it('checks delivery status only through EVA', async () => {
+    const f = vi.fn().mockResolvedValue(json({ status: 'delivered', channel: 'sms' }));
+    vi.stubGlobal('fetch', f);
+    await api.auth.getOtpStatus('otp-id');
+    expect(f.mock.calls[0][0]).toBe('/api/auth/otp/status/otp-id');
+    expect(f.mock.calls[0][1].headers.get('X-Api-Key')).toBeNull();
+  });
+
+  it('stores only EVA access token after backend confirms OTP', async () => {
+    const f = vi.fn().mockResolvedValue(json({
+      access_token: 'eva-jwt',
+      user: { id: 'u2', email: null, phone: '+919876543210', role: 'user' },
+    }));
+    vi.stubGlobal('fetch', f);
+    const result = await api.auth.verifyOtp('+919876543210', '001234');
+    expect(f.mock.calls[0][0]).toBe('/api/auth/otp/verify');
+    expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ phone: '+919876543210', code: '001234' });
+    expect(getAuthToken()).toBe('eva-jwt');
+    expect(result.user.phone).toBe('+919876543210');
+    expect(result.user.name).toBe('+919876543210');
+  });
+
+  it('clears the local token and dispatches expiry on protected 401 responses', async () => {
+    setAuthToken('stale-jwt');
+    const expired = vi.fn();
+    window.addEventListener('eva:auth-expired', expired);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ detail: 'Invalid or expired' }, 401)));
+    await expect(api.tasks.list()).rejects.toThrow('Invalid or expired');
+    expect(getAuthToken()).toBeNull();
+    expect(expired).toHaveBeenCalledOnce();
+    window.removeEventListener('eva:auth-expired', expired);
+  });
+
+  it('calls backend logout before clearing the token', async () => {
+    setAuthToken('eva-jwt');
+    const f = vi.fn().mockResolvedValue(json({ status: 'logged_out' }));
+    vi.stubGlobal('fetch', f);
+    await api.auth.logout();
+    expect(f.mock.calls[0][0]).toBe('/api/auth/logout');
+    expect(f.mock.calls[0][1].method).toBe('POST');
+    expect(getAuthToken()).toBeNull();
   });
 
   it('surfaces the backend `detail` on errors', async () => {

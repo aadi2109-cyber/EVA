@@ -79,8 +79,15 @@ def test_profile_allowed_in_eval(profile):
 
 
 def test_full_profile_allowed_everywhere():
-    for env in ("dev", "prod"):
-        assert Settings(APP_ENV=env, GUARD_PROFILE="full", _env_file=None).GUARD_PROFILE == "full"
+    assert Settings(APP_ENV="dev", GUARD_PROFILE="full", _env_file=None).GUARD_PROFILE == "full"
+    assert Settings(
+        APP_ENV="prod",
+        GUARD_PROFILE="full",
+        JWT_SECRET="production-test-secret-with-at-least-32-random-looking-bytes",
+        FRONTEND_ORIGINS="https://eva.example",
+        MINIMOTH_API_KEY="test-key",
+        _env_file=None,
+    ).GUARD_PROFILE == "full"
 
 
 @pytest.mark.parametrize("flag", ["EVA_FAIL_TIER2_DOWN", "EVA_FAIL_GUARD_UNREACHABLE", "EVA_FAIL_LAYA_TIMEOUT"])

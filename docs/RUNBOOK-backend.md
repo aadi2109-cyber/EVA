@@ -42,6 +42,10 @@ docker compose -f env/docker-compose.yml --profile ui up --build   # + ui :5173
 The guard image requires `guard/Dockerfile` from SEC-2 (requested in `coordination/requests/backend-to-sec2-01.md`); UI still requires `agent/frontend/Dockerfile` from FE. Compose forces `GUARD_TRANSPORT=http`, so task checks and `/api/admin/*` share the same guard service process and state. The API image runs `alembic upgrade head` on start; DB and per-user workspaces live in the `eva-data` volume (`/data`). Guard SQLite state lives in `guard-data`.
 Config: `env/.env.example` (committed defaults) layered under `env/.env` (git-ignored; put real keys there).
 
+`JWT_SECRET` must be set in `env/.env` to a random value of at least 32 bytes; the example file contains only a rejected placeholder. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Keep the value stable across backend workers so existing tokens and signed Gmail OAuth state continue to validate.
+
+For real phone OTP delivery, set `MINIMOTH_API_KEY` in `env/.env` to the project's live `mm_live_...` key. MiniMoth `mm_test_...` keys intentionally do not send WhatsApp/SMS and use the fixed test code `000000`; EVA rejects these test keys for phone login.
+
 Notes
 - `DATABASE_URL` may be written `sqlite:///./agent.db` (as in doc 03); it is normalised to the async driver `sqlite+aiosqlite:///`.
 - Seeded logins (dev): `user@eva.local` / `UserPassword123!`, `admin@eva.local` / `AdminPassword123!`. Change them for anything shared.
@@ -106,6 +110,9 @@ off-screen). Nothing hidden is dropped, so the guard scanner sees it. `<script>`
 `web.search` is simulated (fixed example.com results); there is no search backend.
 
 - **Check the Ollama key/model/search:** `python -m app.eval.check_live` (never prints the key). It tests that *chat* is authorised, that the model emits a tool call on its own, and that web search answers. Note `GET /api/tags` returns 200 with no key at all (public listing), so it is NOT a key check. 401 on chat = key rejected (create a new one); 404 = wrong model name (use `gpt-oss:20b`).
+
+### File upload
+`POST /api/files/upload?path=<dir>` (Bearer JWT; multipart, one field `file`) -> `201 {path,size}`. Text only (`.txt .md .csv .tsv .json .log .yaml .yml .xml`, UTF-8), max 512 KB, workspace quota 20 MB / 500 files, never overwrites (`409`), writes only into the caller's own workspace (never the shared demo workspace). Every attempt, accepted or rejected, is recorded in `file_audit_events` (user, path, size, sha256, outcome, reason; never the content). The agent reading an uploaded file goes through the normal `files.read` -> guard scan. Full status table: `coordination/requests/BE-to-FE-02.md`. Needs `python-multipart` (declared) and migration `006_file_audit` (`alembic upgrade head`).
 
 ### Where configuration comes from
 The backend loads, lowest to highest priority: `env/.env.example` (defaults) < `env/.env` (git-ignored secrets) < `./.env` < real process environment variables. The **guard service reads only its process environment** (e.g. `GUARD_SERVICE_TOKEN`), not `env/.env`: start it with the same values, e.g. `set -a; . env/.env; set +a; uvicorn service.main:app --port 8100` from `guard/`. A token mismatch between the two shows up as 401/502 from `/api/health` and `/api/admin/*`. Docker compose layers `env/.env` for both services.
