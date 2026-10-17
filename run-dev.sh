@@ -29,11 +29,14 @@ PY="$(command -v python3 || command -v python)" || die "python not found"
 export PYTHONPATH="$BACKEND_DIR:$ROOT:$ROOT/contracts:$ROOT/guard${PYTHONPATH:+:$PYTHONPATH}"
 export VITE_API_BASE="${VITE_API_BASE:-http://localhost:$BACKEND_PORT}"
 
+# Job control puts each background job in its own process group, so cleanup can
+# take down npm -> vite and uvicorn --reload workers, not just the direct child.
+set -m
 PIDS=()
 cleanup() {
   trap - INT TERM EXIT
   for pid in "${PIDS[@]:-}"; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+    [ -n "$pid" ] && kill -TERM -- "-$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
 }
