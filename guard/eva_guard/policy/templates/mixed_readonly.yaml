@@ -13,6 +13,7 @@ allowed_data_scope: []
 allowed_destinations:
   - "https://*"
   - "http://*"
+  - "*"
 prohibited_side_effects:
   - gmail.send
   - gmail.draft

@@ -1,0 +1,64 @@
+# Run from anywhere:  docker compose -f env/docker-compose.yml up --build
+#   api + guard         FastAPI backend on :8000, guard HTTP service on :8100
+#   ui    (profile ui)   Vite dev server on :5173       -> --profile ui
+# guard/Dockerfile is supplied by SEC-2 (see coordination/requests/backend-to-sec2-01.md).
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: agent/backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.example            # defaults (committed, no secrets)
+      - path: .env              # optional local overrides / real secrets (git-ignored)
+        required: false
+    environment:
+      # paths inside the container (override the relative paths in .env.example)
+      DATABASE_URL: sqlite+aiosqlite:////data/agent.db
+      WORKSPACE_ROOT: /data/workspace
+      MOCK_STATE_FILE: /data/mock_state.json
+      GUARD_TRANSPORT: http
+      GUARD_SERVICE_URL: http://guard:8100
+    volumes:
+      - eva-data:/data
+    depends_on:
+      guard:
+        condition: service_healthy
+    restart: unless-stopped
+
+  guard:
+    build:
+      context: ../guard
+      dockerfile: Dockerfile
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env.example
+      - path: .env
+        required: false
+    environment:
+      GUARD_DATABASE_URL: sqlite:////data/guard.db
+    volumes:
+      - guard-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/v1/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ui:
+    profiles: ["ui"]
+    build:
+      context: ../agent/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+
+volumes:
+  eva-data:
+  guard-data:

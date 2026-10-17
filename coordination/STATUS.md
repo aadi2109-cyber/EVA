@@ -1,18 +1,49 @@
 # EVA — STATUS (each agent edits only its own section)
 
-Contract version: 0.1.0 · Last human merge: <time>
+Contract version: 0.1.0 · Last human merge: H0.75
 
 ## FE
 - Done:
-- In progress:
-- Blocked / needs:
-- Next:
+  - Downloaded Stitch reference assets (`stitch_screen.png`, `stitch_screen.html`) from Project ID: 14542611907438946012, Screen ID: 9258055bfecd4f938a90b93a442fc1ab.
+  - Authored comprehensive `agent/frontend/UI_NOTES.md` documenting visual language, obsidian dark theme (`#121316`), neon lime accents (`#c8f322`), typography, and full component inventory.
+  - Implemented typed API client (`src/api/client.ts`) and complete TypeScript contract types (`src/api/types.ts`) matching `02-contracts-v0.md`.
+  - Implemented resilient SSE client (`src/api/sse.ts`) with monotonic `seq` ordering and auto-reconnect.
+  - Implemented mock streams and scenario runners (`src/mocks/mockStream.ts`) for S1 (prompt injection sanitized), S2 (hijacked model send denied), S4 (exact-action approval modal flow), and S7 (Tier 2 degraded fail-closed mode).
+  - Built persistent Header navigation matching Stitch reference (`src/components/Header.tsx`).
+  - Built full Live Security Trace Panel (`src/components/LiveTracePanel.tsx`) with filter tabs, color-coded accessible badges (PASS, SANITIZED, QUARANTINED, HELD, ALLOW, REQUIRE_APPROVAL, DENY, guard.error), and right-hand Audit Inspector card with zero-raw-text guarantees.
+  - Built Exact-Action Approval Modal (`src/components/ApprovalModal.tsx`), Collapsible Tool Call Cards (`src/components/ToolCallCard.tsx`), Plan Steps list (`src/components/StepList.tsx`), and Task Outcome summary (`src/components/TaskSummaryLine.tsx`).
+  - Built all application pages: Task Workspace (`TaskWorkspace.tsx`), Settings & Security Telemetry (`SettingsTrace.tsx`), Connectors (`Connectors.tsx`), Sandboxed Files (`FilesViewer.tsx`), Task History (`History.tsx`), and Admin Enclave (`Admin.tsx`).
+  - CP-A/CP-B integration with the real BE (verified headlessly in Chromium against BE + guard service): real login/JWT restore, task create + SSE stream (block-based parser, `Last-Event-ID` reconnect, no reconnect after terminal event), approvals incl. re-approval, `/api/health` polling for the degraded banner, Connectors, Files browser, History with replay of stored events, Admin (guard health, audit explorer, hash-chain verify, kill switches). S1, S2, S4 seen end to end.
+  - Admin: config view + four-eyes proposals (proposer sees "waiting", a different admin approves; verified live with two admins) and review queue with decision recording. Admin `Eval` is read-only.
+  - Mocks kept behind `VITE_USE_MOCK_STREAM=true`.
+- In progress: -
+- Blocked / needs: see `coordination/requests/fe-to-be-live-demo.md` (scripted-provider switch for demos, tool.output field name, plan.step status, approval expiry).
+  - Tooling: `npm test` (Vitest + Testing Library, 35 tests: SSE parser/reconnect, API client, StepList, ToolCallCard, ApprovalModal, mock scenarios), `npm run lint` (ESLint 9, zero warnings, bans `dangerouslySetInnerHTML`, enforces hooks rules), `npm run typecheck`, `npm run test:e2e` (Playwright, 5 smoke tests: login, S1, S4 approval, S7 degraded banner, admin proposal; API stubbed via page.route, no backend needed).
+- Next: S7 live, state polish.
 
 ## BE
 - Done:
-- In progress:
-- Blocked / needs:
-- Next:
+  - Role started on branch `role/backend`.
+  - Verified Python environment, installed dependencies (`pydantic-settings`, `structlog`, `argon2-cffi`, `pytest`, `pytest-asyncio`, `pyyaml`, `prometheus-client`, `greenlet`, `fastapi`, `uvicorn`, `sqlalchemy`, `aiosqlite`).
+  - Verified Gate G0 `contracts/` and `StubGuard` integration.
+  - Delivered `env/` (docker-compose, .env.example, mock fixtures: mailbox.json, workspace, web, state.py, reset.py).
+  - Delivered `agent/backend` app skeleton, configuration, auth, DB models (SQLite WAL).
+  - Delivered tool registry (Gmail real/mock, sandboxed files, web, messages).
+  - Delivered model providers (ScriptedProvider + OllamaProvider) and GuardClient (InProcess + HTTP).
+  - Delivered Orchestrator loop with strict provenance, guard checks, state observation, and SSE replay.
+  - Achieved Gate G1: full loop on StubGuard + ScriptedProvider + SSE.
+  - Achieved Checkpoint CP-A: injected-email scenario S1 passes end to end with real guard facade; S2, S4, S4 approval flow, S7, and S12 scenarios verified and passing.
+  - Full test suite passing: 22/22 tests passing in `agent/backend/tests/`.
+  - CP-B work: HttpGuardClient parity tests vs guard service, approvals e2e (S4) incl. edited-args re-approval, admin proxy, SSE Last-Event-ID replay (auth added), web tool hardening, Gmail mock/real backend parity + OAuth hardening, failure-injection hooks (EVA_FAIL_*), eval CLI + reset, Dockerfile/.env.example/compose, docs/RUNBOOK-backend.md.
+  - Backend suite: 119/119 passing.
+  - Prompt A: per-process test DB (parallel pytest safe); connector `status` column + migration 002 (replaces expires_hint prefix); plain `sqlite:///` DATABASE_URL accepted; edited-args re-approval e2e test; scenarios S3, S8, S10, S11 added to runner; S13/S14 tested through the admin proxy; admin proxy now takes admin identity from the JWT (X-Admin-User-Id, proposed_by), so four-eyes can't be spoofed.
+  - Prompt B: web.fetch SSRF (DNS resolution + IP pinning on every hop); web.search provider interface (mock default/eval, Ollama web-search API); OllamaProvider verified vs published API, fails the task on provider errors (ModelProviderError) with tests; real-Gmail hardening (caps, charsets, depth limits, transient vs revoked, 429/5xx); runbook updated.
+  - FE live-integration fixes: `plan.step` now 0-based with running -> completed|failed (never left running). Guard-side bugs reported to SEC-2 (BE-to-SEC2-02): approval expiry is 2 h not 10 min (gateway.py), `/admin/v1/eval/runs` route missing; both pinned by strict-xfail tests. Answers to FE: BE-to-FE-01. Still open from FE's list: #1 demo model switch (MODEL_PROVIDER=scripted), #2 `tool.output` field name, #6 health p50/p95.
+  - Backend suite: 208 passed + 2 strict xfails.
+  - Integration merge on role/backend: backend-ops, sec1+sec2, frontend merged in. Backend 215 passed + 4 strict xfails; guard 113 passed; FE typecheck + 35 vitest pass. Open pins: S10/S11 (SEC-1 detector sanitises bare email addresses: BE-to-SEC1-01), approval expiry 2h and /eval/runs (SEC-2: BE-to-SEC2-02).
+- In progress: CP-C robustness (ops/tools work split to other BE teammates).
+- Blocked / needs: None. Real Gmail/OAuth and Docker build not verified (mocked-HTTP tests only). S9 (LAYA timeout on a gray-band sentence) is detector-side: needs SEC-1's DetPipeline. S11 "quoted text not stripped" is only as strong as the detector wired in.
+- Next / known issues: web.search/Ollama never exercised against live services (no key/network here); web.search query is an unpoliced egress channel (see coordination/requests/BE-to-SEC2-01.md); in-process mode admin changes don't reach the in-process Guard instance.
 
 ## SEC-1
 - Done:

@@ -5,7 +5,8 @@ allowed_operations:
   - gmail.read
   - gmail.draft
 allowed_data_scope: []
-allowed_destinations: []
+allowed_destinations:
+  - "*@*"
 prohibited_side_effects:
   - gmail.send
   - files.write

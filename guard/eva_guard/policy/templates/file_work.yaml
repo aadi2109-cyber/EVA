@@ -6,7 +6,8 @@ allowed_operations:
   - files.search
   - files.write
 allowed_data_scope: []
-allowed_destinations: []
+allowed_destinations:
+  - "*"
 prohibited_side_effects:
   - gmail.send
   - messages.send

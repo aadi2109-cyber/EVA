@@ -11,11 +11,16 @@ htmlcov/
 # Environment and secrets
 .env
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 
 # Node / Frontend
 node_modules/
 dist/
+
+# Workspace sandbox
+workspace/
 
 # OS / Editor
 .DS_Store

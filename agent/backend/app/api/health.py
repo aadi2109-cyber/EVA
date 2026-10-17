@@ -1,0 +1,57 @@
+"""
+Health check endpoint reporting status of agent backend and connected guard.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from fastapi import APIRouter
+from sqlalchemy import text
+
+from app.config import settings
+from app.db.database import async_session_factory
+from app.guard_client.factory import get_guard_client
+
+router = APIRouter(prefix="/api/health", tags=["health"])
+
+
+@router.get("")
+async def health_check() -> dict[str, Any]:
+    try:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT 1"))
+        backend_status = "ok"
+        backend_error = None
+    except Exception as e:
+        backend_status = "down"
+        backend_error = str(e)
+
+    guard = get_guard_client()
+    try:
+        guard_health = await guard.health()
+        guard_data = guard_health.model_dump(mode="json")
+    except Exception as e:
+        guard_data = {
+            "status": "down",
+            "tier2_available": False,
+            "t3_available": False,
+            "align_available": False,
+            "contract_version": "0.1.0",
+            "kill_switch": {"all_write_tools": False, "tools": []},
+            "error": str(e),
+        }
+
+    backend_data = {
+        "status": backend_status,
+        "app_env": settings.APP_ENV,
+        "guard_transport": settings.GUARD_TRANSPORT,
+        "gmail_mode": settings.GMAIL_MODE,
+        "guard_profile": settings.GUARD_PROFILE,
+    }
+    if backend_error:
+        backend_data["error"] = backend_error
+
+    return {
+        "backend": backend_data,
+        "guard": guard_data,
+    }
