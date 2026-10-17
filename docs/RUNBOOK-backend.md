@@ -42,6 +42,10 @@ docker compose -f env/docker-compose.yml --profile ui up --build   # + ui :5173
 The guard image requires `guard/Dockerfile` from SEC-2 (requested in `coordination/requests/backend-to-sec2-01.md`); UI still requires `agent/frontend/Dockerfile` from FE. Compose forces `GUARD_TRANSPORT=http`, so task checks and `/api/admin/*` share the same guard service process and state. The API image runs `alembic upgrade head` on start; DB and per-user workspaces live in the `eva-data` volume (`/data`). Guard SQLite state lives in `guard-data`.
 Config: `env/.env.example` (committed defaults) layered under `env/.env` (git-ignored; put real keys there).
 
+`JWT_SECRET` must be set in `env/.env` to a random value of at least 32 bytes; the example file contains only a rejected placeholder. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Keep the value stable across backend workers so existing tokens and signed Gmail OAuth state continue to validate.
+
+For real phone OTP delivery, set `MINIMOTH_API_KEY` in `env/.env` to the project's live `mm_live_...` key. MiniMoth `mm_test_...` keys intentionally do not send WhatsApp/SMS and use the fixed test code `000000`; EVA rejects these test keys for phone login.
+
 Notes
 - `DATABASE_URL` may be written `sqlite:///./agent.db` (as in doc 03); it is normalised to the async driver `sqlite+aiosqlite:///`.
 - Seeded logins (dev): `user@eva.local` / `UserPassword123!`, `admin@eva.local` / `AdminPassword123!`. Change them for anything shared.

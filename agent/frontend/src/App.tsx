@@ -67,18 +67,24 @@ export const App: React.FC = () => {
   // User role toggle (for quick testing admin views)
   const handleToggleRole = () => {
     if (!currentUser) return;
-    if (!USE_MOCK) {
-      // Role comes from the server (JWT); this control signs out instead.
-      streamRef.current?.close();
-      api.auth.logout();
-      setCurrentUser(null);
-      return;
-    }
+    if (!USE_MOCK) return;
     const nextRole = currentUser.role === 'admin' ? 'user' : 'admin';
     setCurrentUser({
       ...currentUser,
       role: nextRole,
     });
+  };
+
+  const handleLogout = async () => {
+    streamRef.current?.close();
+    try {
+      await api.auth.logout();
+    } catch {
+      // Clear the browser token even if the API is unreachable; it cannot be trusted locally.
+    } finally {
+      setCurrentUser(null);
+      setTaskError(null);
+    }
   };
 
   // Restore session from stored JWT
@@ -93,6 +99,16 @@ export const App: React.FC = () => {
       .then(setCurrentUser)
       .catch(() => api.auth.logout())
       .finally(() => setBooting(false));
+  }, []);
+
+  useEffect(() => {
+    const expireSession = () => {
+      streamRef.current?.close();
+      setCurrentUser(null);
+      setTaskError('Your session expired. Please sign in again.');
+    };
+    window.addEventListener('eva:auth-expired', expireSession);
+    return () => window.removeEventListener('eva:auth-expired', expireSession);
   }, []);
 
   // Poll backend + guard health to drive the degraded banner
@@ -460,7 +476,7 @@ export const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <Login onLoginSuccess={(u) => setCurrentUser(u)} />;
+    return <Login message={taskError ?? undefined} onLoginSuccess={(u) => { setTaskError(null); setCurrentUser(u); }} />;
   }
 
   return (
@@ -470,7 +486,8 @@ export const App: React.FC = () => {
         currentTab={currentTab}
         onSelectTab={(tab) => setCurrentTab(tab)}
         currentUser={currentUser}
-        onToggleRole={handleToggleRole}
+        onToggleRole={USE_MOCK ? handleToggleRole : undefined}
+        onLogout={() => void handleLogout()}
         isTraceOpen={isTraceDrawerOpen}
         onToggleTrace={() => setIsTraceDrawerOpen(!isTraceDrawerOpen)}
         traceCount={traceItems.length}
