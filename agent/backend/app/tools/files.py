@@ -138,7 +138,11 @@ class FilesReadTool:
                 raise FileNotFoundError(f"File not found: {validated.path}")
         else:
             if target.stat().st_size > MAX_FILE_BYTES:
-                raise ValueError(f"File size exceeds maximum allowed limit of {MAX_FILE_BYTES} bytes")
+                raise ValueError(
+                    f"File is {target.stat().st_size // 1024} KB; the agent can read files up to "
+                    f"{MAX_FILE_BYTES // 1024} KB (maximum allowed limit of {MAX_FILE_BYTES} bytes). "
+                    "Ask the user for a smaller file or a relevant excerpt."
+                )
             content = target.read_text(encoding="utf-8", errors="replace")
 
         scan_field = ScanField(

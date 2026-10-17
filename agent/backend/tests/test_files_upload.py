@@ -96,6 +96,21 @@ async def test_oversize_is_413_and_nothing_is_written(async_client):
     assert not ws(uid, "over.txt").exists() and not ws(uid, "huge.txt").exists()
 
 
+async def test_a_file_between_512kb_and_1mb_is_stored_viewable_but_the_agent_gets_a_clear_limit_error(async_client):
+    """Upload limit is 1 MB; the agent's files.read limit is 512 KB (context size): the mismatch must be explicit."""
+    from app.tools.base import ToolContext
+    from app.tools.files import MAX_FILE_BYTES, FilesReadTool
+
+    h, uid = await login(async_client)
+    data = b"line of text\n" * 50_000                                   # ~650 KB
+    assert MAX_FILE_BYTES < len(data) <= files_api.MAX_UPLOAD_BYTES
+    assert (await up(async_client, h, "big.log", data)).status_code == 201
+    shown = await async_client.get("/api/files/content", params={"path": "big.log"}, headers=h)
+    assert shown.status_code == 200 and len(shown.json()["content"]) == len(data)
+    with pytest.raises(ValueError, match=r"agent can read files up to 512 KB"):
+        await FilesReadTool().run({"path": "big.log"}, ToolContext(task_id="t", user_id=uid, call_id="c"))
+
+
 async def test_missing_content_length_is_411(async_client):
     h, _ = await login(async_client)
     boundary = "xBOUNDARYx"

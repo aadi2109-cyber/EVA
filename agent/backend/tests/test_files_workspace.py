@@ -93,7 +93,9 @@ async def test_users_cannot_read_each_others_files(async_client):
 
 async def test_size_cap_and_binary_content(async_client):
     h, uid = await login(async_client)
-    put(uid, "big.txt", "A" * (512 * 1024 + 1))
+    from app.api import files as files_api
+
+    put(uid, "big.txt", "A" * (files_api.MAX_VIEW_BYTES + 1))
     assert (await async_client.get("/api/files/content", params={"path": "big.txt"}, headers=h)).status_code == 413
     put(uid, "bin.dat", bytes(range(256)))
     r = await async_client.get("/api/files/content", params={"path": "bin.dat"}, headers=h)

@@ -30,7 +30,7 @@ logger = logging.getLogger("eva.files")
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 MOCK_WORKSPACE = Path(__file__).resolve().parents[4] / "env" / "mock" / "workspace"
-MAX_VIEW_BYTES = 512 * 1024
+MAX_VIEW_BYTES = 1024 * 1024  # viewer shows anything an upload can contain (1 MB)
 
 
 def _mock_path(rel: str) -> Path | None:
@@ -94,7 +94,7 @@ async def get_file_content(
 
 
 # ------------------------------------------------------------------------------ upload
-MAX_UPLOAD_BYTES = MAX_FILE_BYTES            # an upload must stay readable by files.read (512 KB)
+MAX_UPLOAD_BYTES = 1024 * 1024               # 1 MB (matches the UI pre-check). NOTE: the agent's files.read stops at MAX_FILE_BYTES (512 KB)
 MAX_REQUEST_SLACK = 16 * 1024                # multipart framing overhead allowed above the file limit
 WORKSPACE_QUOTA_BYTES = 20 * 1024 * 1024
 WORKSPACE_QUOTA_FILES = 500
@@ -155,7 +155,7 @@ async def upload_file(
     if length is None or not length.isdigit():
         await reject(status.HTTP_411_LENGTH_REQUIRED, "Content-Length is required")
     if int(length) > MAX_UPLOAD_BYTES + MAX_REQUEST_SLACK:
-        await reject(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"File exceeds the {MAX_UPLOAD_BYTES // 1024} KB limit")
+        await reject(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"File exceeds the {MAX_UPLOAD_BYTES // 1024 // 1024} MB limit")
 
     try:
         form = await request.form(max_files=1, max_fields=1)
@@ -189,7 +189,7 @@ async def upload_file(
     sha = hashlib.sha256(data).hexdigest()
     rel = (target_dir / name).relative_to(sandbox).as_posix()
     if len(data) > MAX_UPLOAD_BYTES:
-        await reject(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"File exceeds the {MAX_UPLOAD_BYTES // 1024} KB limit", name=name, size=len(data), sha=sha)
+        await reject(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, f"File exceeds the {MAX_UPLOAD_BYTES // 1024 // 1024} MB limit", name=name, size=len(data), sha=sha)
     if not data:
         await reject(status.HTTP_400_BAD_REQUEST, "Empty file", name=name)
     try:
