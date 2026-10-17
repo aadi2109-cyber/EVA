@@ -23,3 +23,8 @@
 - Task policies, approvals and the kill switch are stored in the guard SQLite DB (`task_policies`, `approvals`, `kill_switch`) and survive restarts. `GUARD_DB_PATH` selects the file (default `./guard.db`).
 - `build_task_policy` is idempotent per `task_id`: a repeat call returns the stored policy unchanged (audited as `policy.rebuild_ignored`); a policy can never be replaced or widened.
 - Approvals are bound to the task they were issued for; only the task owner (`policy.user_id`) can resolve them. Single use is persisted before ALLOW is returned; if persistence fails the action is DENIED (`GUARD_ERROR`).
+
+## Behaviour clarifications (no schema change) — BE/FE requests
+- Approval `expires_at` = min(now + 10 min, policy expiry) (was the 2 h policy expiry).
+- `web.search`: a declared-UNTRUSTED `query` provenance requires approval (`UNTRUSTED_ARG_PROVENANCE`).
+- Admin API (§7): `GET /config/proposals`, `POST /config/proposals/{id}/reject`, `GET /eval/runs|/eval/runs/{id}|/eval/summary`, `GET /templates[/{id}]` (read-only; `POST/PUT /templates` return 405 by design), `GET /review-queue?status=`. `X-Admin-User-Id` overrides client-supplied `reviewer_id`. Held/quarantined scans enqueue review items.

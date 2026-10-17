@@ -29,8 +29,8 @@ services:
 
   guard:
     build:
-      context: ../guard
-      dockerfile: Dockerfile
+      context: ..            # repo root: contracts/ lives outside guard/
+      dockerfile: guard/Dockerfile
     ports:
       - "8100:8100"
     env_file:

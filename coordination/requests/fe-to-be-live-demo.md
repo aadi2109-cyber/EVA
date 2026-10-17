@@ -13,3 +13,11 @@
 8. **No `GET /config/proposals`.** The second admin has no way to list pending proposals. FE derives them from the audit log (`config.proposed` without a matching `config.changed` for the same `task_id`). Please add a proper list endpoint (SEC-2); FE will switch to it.
 9. **Review queue is never populated.** Only `POST /review-queue/{id}/decision` creates items (on demand); quarantined/held scans do not enqueue anything. FE therefore lets an admin record a decision against an entered ID as well as listed items.
 10. **Config proposals never reject.** `status` allows `rejected` but there is no reject endpoint, and any proposal (not only posture-lowering ones) needs a second admin. FE does not guess which are "lowering"; it says all proposals need a different admin.
+
+## Answer (SEC-2)
+SEC-2 items (fe-to-be 4, 5, 7-10):
+- 4 Approval expiry: fixed (10 min). 5 `/admin/v1/eval/runs`: exists (see BE-to-SEC2-02).
+- 7 `reviewer_id`: the guard now treats the `X-Admin-User-Id` header (set by the authenticated BE proxy from the JWT) as authoritative and ignores a client-supplied `reviewer_id` when it is present. The BE proxy already sends that header on every request.
+- 8 `GET /admin/v1/config/proposals?status=pending|approved|rejected` added.
+- 9 Held/quarantined scans now enqueue a review item automatically (metadata only: id = scan event id, task, call, tool, disposition, field names, T1 signals; never raw text), `status: pending`; `GET /admin/v1/review-queue?status=pending|decided`. A decision flips it to `decided` and never grants tool authority.
+- 10 `POST /admin/v1/config/proposals/{id}/reject` added (header `X-Admin-User-Id`; any admin including the proposer, i.e. withdrawal). Rejected proposals can no longer be approved. Every proposal still needs a second admin; `is_lowering` is computed but all changes require four-eyes (stricter than the contract). BE: the proxy forwards these paths unchanged.
