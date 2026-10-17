@@ -40,7 +40,7 @@ def test_missing_laya_package_is_unavailable(monkeypatch):
 def test_only_request_and_action_reach_the_model_and_client_timeout_applies():
     f = Fake({"serves_request": "yes", "unnamed_destination": "no", "extra_side_effect": "no"})
     AlignClient(enabled=True, backend=LayaAlignBackend(runner=f)).check("Email bob", None, "gmail.send", {"to": "bob@corp.com"})
-    assert set(f.seen) == {"request", "action"}
+    assert isinstance(f.seen, str) and f.seen.startswith("REQUEST: ") and "\nACTION: " in f.seen
     import time
     slow = type("S", (), {"predict": lambda self, s, q: time.sleep(0.5)})()
     assert AlignClient(enabled=True, timeout_ms=50, backend=LayaAlignBackend(runner=slow)).check("r", None, "gmail.send", {}).verdict == "unavailable"
