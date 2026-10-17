@@ -38,6 +38,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers,
   });
 
+  if (response.status === 401 && authToken && !path.startsWith('/api/auth/')) {
+    setAuthToken(null);
+    window.dispatchEvent(new CustomEvent('eva:auth-expired'));
+  }
+
   if (!response.ok) {
     const errorText = await response.text();
     let errorJson;
@@ -54,9 +59,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 const toUser = (u: any): User => ({
   id: u.id,
-  email: u.email,
+  email: u.email ?? null,
+  phone: u.phone ?? null,
   role: u.role,
-  name: u.name || String(u.email).split('@')[0],
+  name: u.name || u.email?.split('@')[0] || u.phone || 'EVA user',
 });
 
 export const api = {
@@ -69,11 +75,32 @@ export const api = {
       setAuthToken(data.access_token);
       return { access_token: data.access_token, user: toUser(data.user) };
     },
+    sendOtp: async (phone: string): Promise<{ message: string; otp_id?: string | null }> =>
+      request('/api/auth/otp/send', {
+        method: 'POST',
+        body: JSON.stringify({ phone }),
+      }),
+    getOtpStatus: async (otpId: string): Promise<{ status: 'queued' | 'delivered' | 'failed'; channel: 'whatsapp' | 'sms' | null }> =>
+      request(`/api/auth/otp/status/${encodeURIComponent(otpId)}`),
+    verifyOtp: async (phone: string, code: string): Promise<{ access_token: string; user: User }> => {
+      const data = await request<any>('/api/auth/otp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ phone, code }),
+      });
+      setAuthToken(data.access_token);
+      return { access_token: data.access_token, user: toUser(data.user) };
+    },
     getMe: async (): Promise<User> => {
       return toUser(await request<any>('/api/me'));
     },
-    logout: () => {
-      setAuthToken(null);
+    logout: async (): Promise<void> => {
+      try {
+        if (authToken) {
+          await request('/api/auth/logout', { method: 'POST' });
+        }
+      } finally {
+        setAuthToken(null);
+      }
     },
   },
 
@@ -118,6 +145,23 @@ export const api = {
     },
     disconnectGmail: async (): Promise<void> => {
       return request<void>('/api/connectors/gmail', {
+        method: 'DELETE',
+      });
+    },
+    getTelegramLinkCode: async (): Promise<{ code: string; expires_at: string; instructions: string }> => {
+      return request<{ code: string; expires_at: string; instructions: string }>(
+        '/api/connectors/telegram/link-code',
+        { method: 'POST' }
+      );
+    },
+    verifyTelegramLink: async (data: { code: string; chat_id: string; chat_type?: string; chat_username?: string }): Promise<any> => {
+      return request<any>('/api/connectors/telegram/verify', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    disconnectTelegram: async (): Promise<void> => {
+      return request<void>('/api/connectors/telegram', {
         method: 'DELETE',
       });
     },

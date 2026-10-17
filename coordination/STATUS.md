@@ -41,6 +41,8 @@ Contract version: 0.1.0 · Last human merge: H0.75
   - FE live-integration fixes: `plan.step` now 0-based with running -> completed|failed (never left running). Guard-side bugs reported to SEC-2 (BE-to-SEC2-02): approval expiry is 2 h not 10 min (gateway.py), `/admin/v1/eval/runs` route missing; both pinned by strict-xfail tests. Answers to FE: BE-to-FE-01. Still open from FE's list: #1 demo model switch (MODEL_PROVIDER=scripted), #2 `tool.output` field name, #6 health p50/p95.
   - Backend suite: 208 passed + 2 strict xfails.
   - Integration merge on role/backend: backend-ops, sec1+sec2, frontend merged in. Backend 215 passed + 4 strict xfails; guard 113 passed; FE typecheck + 35 vitest pass. Open pins: S10/S11 (SEC-1 detector sanitises bare email addresses: BE-to-SEC1-01), approval expiry 2h and /eval/runs (SEC-2: BE-to-SEC2-02).
+  - CP-A wiring is DONE and verifiable: `GUARD_TRANSPORT=inprocess` loads the real `eva_guard.api.Guard` (HTTP transport also works). `/api/health` reports `backend.guard_impl` (`eva_guard.api.Guard` | `http:<url>` | `unavailable`). Removed the silent fallback to StubGuard: if the real guard cannot load, guard calls fail closed and health shows `down`. SEC-2's "Waiting for BE to wire real Guard facade" line is stale. Tests: 219 passed + 4 pinned xfails.
+  - File upload built (FE request item 11): `POST /api/files/upload?path=` (1 MB limit; agent reads <= 512 KB) with name/type/size/quota rules, atomic no-overwrite (409), own-workspace only, audited in `file_audit_events` (migration 006); agent reads of uploads still scanned. 52 upload tests. Open: doc 02 §6 row + guard-chain audit mirror (BE-to-SEC2-03), FE limit/extension notes (BE-to-FE-02). SEC-2's sec2-to-be-01 (test_admin_scenarios vs persisted admin state) is NOT yet applied.
 - In progress: CP-C robustness (ops/tools work split to other BE teammates).
 - Blocked / needs: None. Real Gmail/OAuth and Docker build not verified (mocked-HTTP tests only). S9 (LAYA timeout on a gray-band sentence) is detector-side: needs SEC-1's DetPipeline. S11 "quoted text not stripped" is only as strong as the detector wired in.
 - Next / known issues: web.search/Ollama never exercised against live services (no key/network here); web.search query is an unpoliced egress channel (see coordination/requests/BE-to-SEC2-01.md); in-process mode admin changes don't reach the in-process Guard instance.
@@ -108,7 +110,7 @@ Contract version: 0.1.0 · Last human merge: H0.75
 
 ## Gates
 - [x] G0 contracts frozen + StubGuard (H0.75)
-- [ ] G1 full loop on StubGuard; real scan + check behind facade (H3.5)
-- [ ] CP-A injected-email scenario S1 end to end (H4)
-- [ ] CP-B demo scenarios S1,S2,S4,S7,S12 (H7)
+- [x] G1 full loop on StubGuard; real scan + check behind facade (H3.5)
+- [x] CP-A injected-email scenario S1 end to end (H4): real `eva_guard.api.Guard` in-process, S1 PASS (BE `python -m app.eval.run_scenario S1`; `/api/health` -> `backend.guard_impl`)
+- [x] CP-B demo scenarios S1,S2,S4,S7,S12 (H7): all PASS against the real guard (BE runner + tests); FE verified S1/S2/S4 in the UI
 - [ ] CP-C metrics table produced (H9)

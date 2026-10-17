@@ -47,6 +47,8 @@ async def health_check() -> dict[str, Any]:
         "guard_transport": settings.GUARD_TRANSPORT,
         "gmail_mode": settings.GMAIL_MODE,
         "guard_profile": settings.GUARD_PROFILE,
+        # which guard is really behind the client: eva_guard.api.Guard (real), http:<url>, or unavailable
+        "guard_impl": getattr(guard, "implementation", type(guard).__name__),
     }
     if backend_error:
         backend_data["error"] = backend_error

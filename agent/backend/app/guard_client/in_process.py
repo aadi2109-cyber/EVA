@@ -27,24 +27,39 @@ logger = logging.getLogger(__name__)
 
 
 class InProcessGuardClient:
-    """Invokes eva_guard.api.Guard (or StubGuard) directly in-process."""
+    """Invokes eva_guard.api.Guard directly in-process (StubGuard only when explicitly injected)."""
 
     def __init__(self, guard_instance: Any = None) -> None:
         self._policies = {}
-        if guard_instance is not None:
-            self._guard = guard_instance
-        else:
-            # Try importing Guard facade first, fall back to StubGuard
-            try:
-                from eva_guard.api import Guard
-                self._guard = Guard()
-                logger.info("InProcessGuardClient initialized with eva_guard.api.Guard facade")
-            except Exception as e:
-                logger.warning(
-                    "Failed to initialize eva_guard.api.Guard facade (%s); falling back to StubGuard", e
-                )
-                from eva_guard.stub import StubGuard
-                self._guard = StubGuard()
+        self._init_error: str | None = None
+        self._guard_obj: Any = None
+        if guard_instance is not None:  # explicit injection (tests, eval harness)
+            self._guard_obj = guard_instance
+            return
+        # NEVER fall back to the test-only StubGuard: if the real facade cannot load, every guard call
+        # fails closed (GuardError -> deny/held) and /api/health reports the guard as down.
+        try:
+            from eva_guard.api import Guard
+
+            self._guard_obj = Guard()
+            logger.info("InProcessGuardClient initialized with eva_guard.api.Guard facade")
+        except Exception as e:  # pragma: no cover - exercised via monkeypatch in tests
+            self._init_error = f"{type(e).__name__}: {e}"
+            logger.error("eva_guard.api.Guard failed to load (%s); guard unavailable, failing closed", self._init_error)
+
+    @property
+    def _guard(self) -> Any:
+        if self._guard_obj is None:
+            raise GuardError(f"Guard unavailable: real eva_guard failed to load ({self._init_error})")
+        return self._guard_obj
+
+    @property
+    def implementation(self) -> str:
+        """Which guard is really behind this client (shown in /api/health)."""
+        if self._guard_obj is None:
+            return "unavailable"
+        t = type(self._guard_obj)
+        return f"{t.__module__}.{t.__name__}"
 
     _policies: dict[str, TaskPolicy]
 

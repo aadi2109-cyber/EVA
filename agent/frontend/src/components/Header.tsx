@@ -1,11 +1,13 @@
 import React from 'react';
+import { LogOut } from 'lucide-react';
 import { User } from '../api/types';
 
 interface HeaderProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
   currentUser: User;
-  onToggleRole: () => void;
+  onToggleRole?: () => void;
+  onLogout: () => void;
   isTraceOpen: boolean;
   onToggleTrace: () => void;
   traceCount: number;
@@ -17,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTab,
   currentUser,
   onToggleRole,
+  onLogout,
   isTraceOpen,
   onToggleTrace,
   traceCount,
@@ -129,13 +132,15 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* User Role Switcher & Avatar */}
           <div className="flex items-center gap-2 pl-1 border-l border-white/10">
-            <button
-              onClick={onToggleRole}
-              title={`Click to switch role (Current: ${currentUser.role})`}
-              className="text-[10px] font-mono font-bold px-2 py-1 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-primary-container border border-white/10 uppercase"
-            >
-              Role: {currentUser.role}
-            </button>
+            {onToggleRole ? (
+              <button
+                onClick={onToggleRole}
+                title={`Demo role switch (Current: ${currentUser.role})`}
+                className="text-[10px] font-mono font-bold px-2 py-1 rounded-lg bg-surface-container-high hover:bg-surface-container-highest text-primary-container border border-white/10 uppercase"
+              >Role: {currentUser.role}</button>
+            ) : (
+              <span className="text-[10px] font-mono font-bold px-2 py-1 rounded-lg bg-surface-container-high text-primary-container border border-white/10 uppercase">{currentUser.role}</span>
+            )}
             <div className="ring-2 ring-primary-container/30 rounded-full p-0.5">
               <div className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-xs text-white border border-white/10">
                 {currentUser.name
@@ -144,6 +149,16 @@ export const Header: React.FC<HeaderProps> = ({
                   .join('')}
               </div>
             </div>
+            <button
+              type="button"
+              onClick={onLogout}
+              title="Sign out"
+              aria-label="Sign out"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-on-surface-variant hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <LogOut size={15} />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
           </div>
         </div>
       </div>

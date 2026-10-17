@@ -18,6 +18,7 @@ export type SourceType =
   | "file"
   | "web"
   | "message"
+  | "telegram"
   | "tool_output";
 
 export interface Provenance {

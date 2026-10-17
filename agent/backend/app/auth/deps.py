@@ -5,15 +5,16 @@ Identity is ALWAYS resolved from the verified JWT, never from model text.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.security import decode_access_token
+from app.auth.security import decode_access_token, fingerprint_access_token
 from app.db.database import get_db_session
-from app.db.models import User
+from app.db.models import RevokedToken, User
 
 security_bearer = HTTPBearer(auto_error=True)
 
@@ -37,6 +38,25 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token payload missing subject identifier",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        token_expiry = float(payload.get("exp", 0))
+    except (TypeError, ValueError):
+        token_expiry = 0
+    if token_expiry <= datetime.now(timezone.utc).timestamp():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    revoked = await session.get(RevokedToken, fingerprint_access_token(token))
+    if revoked is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
