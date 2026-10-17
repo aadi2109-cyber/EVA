@@ -1,14 +1,14 @@
 # Sanitization Metrics (through the Guard facade)
 
-- Date: 2026-10-16  ·  Detector: DetPipeline (interim rule-based T2; T3 not wired through `Guard`)
+- Date: 2026-10-17  ·  Detector: DetPipeline (interim rule-based T2; T3 not wired through `Guard`)
 - Hardware: x86_64 Linux 3.13.16, CPU only  ·  corpus v1 (authored), whole-record granularity, stratified splits
 - `test` is held out; `dev` was visible to SEC-1. Single run, no seeds involved.
 
 | Split | N | Recall | Precision | FP rate | TP/FN/FP/TN | latency p50 / p95 per KB |
 |---|---|---|---|---|---|---|
-| dev | 67 | 91% | 100% | 0% | 29/3/0/35 | 17.65 / 54.21 ms |
-| test | 64 | 97% | 100% | 0% | 28/1/0/35 | 16.13 / 20.62 ms |
-| blind | 48 | 58% | 78% | 17% | 14/10/4/20 | 17.32 / 20.70 ms |
+| dev | 67 | 91% | 100% | 0% | 29/3/0/35 | 17.66 / 66.79 ms |
+| test | 64 | 97% | 100% | 0% | 28/1/0/35 | 22.60 / 27.23 ms |
+| blind | 48 | 58% | 78% | 17% | 14/10/4/20 | 20.15 / 25.75 ms |
 
 ## Recall by family — dev
 

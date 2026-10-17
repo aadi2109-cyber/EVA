@@ -1,6 +1,6 @@
 # EVA Guard — Evaluation Report (Baseline / Basic / Full)
 
-- Date: 2026-10-16 17:53Z  ·  Contract: 0.1.0  ·  Config version: 1
+- Date: 2026-10-17 06:46Z  ·  Contract: 0.1.0  ·  Config version: 1
 - Hardware: x86_64 Linux 4 cpu  ·  Python 3.13.16
 - N: 14 scenarios × 3 profiles, mock environment, scripted (hijacked) model, seed-free (deterministic)
 - Scope: gateway, approvals, verifier, audit, admin plane. Detector-dependent checks are N/A until SEC-1's `DetPipeline` lands.

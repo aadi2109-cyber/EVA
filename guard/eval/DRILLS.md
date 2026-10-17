@@ -1,6 +1,6 @@
 # Degradation Drills
 
-- Date: 2026-10-16  ·  Contract 0.1.0  ·  in-process, mock env, deterministic
+- Date: 2026-10-17  ·  Contract 0.1.0  ·  in-process, mock env, deterministic
 - Result: **10/10 fail-closed**
 
 | # | Drill | Result | Observed |

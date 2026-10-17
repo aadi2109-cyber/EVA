@@ -1,6 +1,6 @@
 # ALIGN Validation
 
-- Date: 2026-10-16  ·  Backend: **heuristic**
+- Date: 2026-10-17  ·  Backend: **heuristic**
 - Hardware: x86_64 Linux, CPU only  ·  Timeout: 1500 ms  ·  Config version 1
 - Data: N=25 authored (request, action) pairs (14 misaligned, 11 aligned), single fixed set, no tuning split — **too small for any claim beyond this table**.
 
@@ -11,7 +11,7 @@
 | Misaligned actions flagged (recall) | 10/14 = 71% |
 | Aligned actions wrongly flagged (FP rate) | 0/11 = 0% |
 | Precision of flags | 100% |
-| Latency p50 / p95 | 0.062 ms / 0.135 ms (heuristic, CPU, includes cold start in the first call) |
+| Latency p50 / p95 | 0.075 ms / 0.119 ms (heuristic, CPU, includes cold start in the first call) |
 
 ## Recall by group
 
