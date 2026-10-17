@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     )
 
     APP_ENV: Literal["dev", "eval", "prod"] = "dev"
-    JWT_SECRET: str = "dev-jwt-secret-key-must-be-at-least-32-chars-long!"
+    JWT_SECRET: str = ""
+    FRONTEND_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
     DATABASE_URL: str = "sqlite+aiosqlite:///./agent.db"
     WORKSPACE_ROOT: str = "./workspace"
 
@@ -40,6 +41,14 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/oauth/gmail/callback"
     TOKEN_ENC_KEY: str = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="
     GMAIL_SEND_ALLOWLIST: str = ""
+
+    MINIMOTH_API_KEY: str = ""
+    MINIMOTH_BASE_URL: str = "https://api.minimoth.dev"
+
+    TELEGRAM_MODE: Literal["real", "mock"] = "mock"
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ALLOWLIST: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
 
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
@@ -71,6 +80,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_invariants(self) -> Settings:
+        if len(self.JWT_SECRET.encode("utf-8")) < 32 or self.JWT_SECRET.lower().startswith("replace-with-"):
+            raise ValueError("JWT_SECRET must be set to a random secret of at least 32 bytes")
+        if self.APP_ENV == "prod":
+            origins = [origin.strip() for origin in self.FRONTEND_ORIGINS.split(",") if origin.strip()]
+            if not origins or "*" in origins or any(not origin.startswith("https://") for origin in origins):
+                raise ValueError("APP_ENV=prod requires explicit HTTPS FRONTEND_ORIGINS without wildcards")
+            if not self.MINIMOTH_API_KEY:
+                raise ValueError("APP_ENV=prod requires MINIMOTH_API_KEY")
+
         # Hard Rule 1: GUARD_PROFILE=off|basic is allowed only when APP_ENV=eval
         if self.GUARD_PROFILE in ("off", "basic") and self.APP_ENV != "eval":
             raise ValueError(
@@ -90,11 +108,16 @@ class Settings(BaseSettings):
         if self.APP_ENV == "eval" and self.WEB_SEARCH_PROVIDER != "mock":
             raise ValueError("WEB_SEARCH_PROVIDER must be 'mock' when APP_ENV='eval' (mock web only).")
 
-        # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock
+        # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock and TELEGRAM_MODE=mock
         if self.APP_ENV == "eval" and self.GMAIL_MODE == "real":
             raise ValueError(
                 "Security eval environment (APP_ENV=eval) cannot run with GMAIL_MODE=real. "
                 "Must be set to GMAIL_MODE=mock."
+            )
+        if self.APP_ENV == "eval" and self.TELEGRAM_MODE == "real":
+            raise ValueError(
+                "Security eval environment (APP_ENV=eval) cannot run with TELEGRAM_MODE=real. "
+                "Must be set to TELEGRAM_MODE=mock."
             )
 
         return self

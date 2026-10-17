@@ -10,6 +10,7 @@ allowed_destinations: []
 prohibited_side_effects:
   - files.write
   - messages.send
+  - telegram.send
 approval_required_for:
   - gmail.send
   - gmail.draft

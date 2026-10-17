@@ -251,7 +251,8 @@ export interface TaskOutcomePayload {
 // REST & State Models
 export interface User {
   id: string;
-  email: string;
+  email: string | null;
+  phone?: string | null;
   name: string;
   role: "user" | "admin";
 }

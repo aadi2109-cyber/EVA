@@ -8,8 +8,11 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from app.api.router import api_router
@@ -81,23 +84,51 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def sanitize_otp_validation_errors(request: Request, exc: RequestValidationError):
+    if request.url.path in {"/api/auth/otp/send", "/api/auth/otp/verify"}:
+        # Pydantic errors contain submitted input values; never echo phone numbers or OTPs.
+        safe_errors = [
+            {key: error[key] for key in ("loc", "msg", "type") if key in error}
+            for error in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": safe_errors})
+    return await request_validation_exception_handler(request, exc)
+
 # CORS setup for Frontend UI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
-    allow_credentials=True,
+    allow_origins=[origin.strip() for origin in settings.FRONTEND_ORIGINS.split(",") if origin.strip()],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(api_router)
 
+# Mount frontend single-page application (if built)
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-@app.get("/")
-async def root():
-    return {
-        "name": "EVA Agent Backend",
-        "version": "0.1.0",
-        "status": "online",
-        "docs": "/docs",
-    }
+frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if frontend_dist.exists() and (frontend_dist / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = frontend_dist / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(frontend_dist / "index.html")
+else:
+    @app.get("/")
+    async def root():
+        return {
+            "name": "EVA Agent Backend",
+            "version": "0.1.0",
+            "status": "online",
+            "docs": "/docs",
+        }
+

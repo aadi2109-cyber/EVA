@@ -5,6 +5,7 @@ Security utilities: Argon2 password hashing and PyJWT token generation.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
 from typing import Any
 import jwt
 from argon2 import PasswordHasher
@@ -45,5 +46,11 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
 def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])
-    except jwt.PyJWTError as e:
-        raise ValueError(f"Invalid JWT token: {e}") from e
+    except (jwt.PyJWTError, ValueError):
+        # JWT exceptions may contain token-derived values. Keep them out of logs/errors.
+        raise ValueError("Invalid JWT token") from None
+
+
+def fingerprint_access_token(token: str) -> str:
+    """Hash a bearer token before storing it in the revocation table."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

@@ -193,6 +193,8 @@ class Health(BaseModel):
 | `web.fetch` | read | `url` | no | URL is a destination arg; untrusted-origin URLs follow rule 7; strip query-string exfil |
 | `messages.history` | read | `thread_id?` | no | in-app conversation history |
 | `messages.send` | write | `channel`, `text` | **always** | **mock** channel |
+| `telegram.read` / `telegram.history` | read | `chat_id`, `limit?` | no | external Telegram chat history (mock adapter; untrusted scanned) |
+| `telegram.send` | write | `chat_id`, `text` | **always** | external Telegram message (mock adapter; requires exact human approval) |
 
 Tool outputs from any tool, including these, are `UNTRUSTED` and pass `scan_tool_result`.
 

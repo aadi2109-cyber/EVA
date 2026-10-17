@@ -88,20 +88,45 @@ DEFAULT_FAILURE_MODE=fail_closed
 - `env/mock/mailbox.json` — ~30 benign emails (invoices, meetings, newsletters) + labelled attack emails (SEC-2 supplies attack texts).
 - `env/mock/workspace/` — sample files incl. a poisoned document.
 - `env/mock/web/` — local pages served by a mock web server, some poisoned; `web.fetch/search` in `APP_ENV=eval` route here only.
-- `env/mock/state.py` — observable state used by `verify_state`: sent mail, drafts, files + hashes, outbound HTTP log.
+- `env/mock/web/` — local pages served by a mock web server, some poisoned; `web.fetch/search` in `APP_ENV=eval` route here only.
+- `env/mock/state.py` — observable state used by `verify_state`: sent mail, drafts, files + hashes, outbound HTTP log, and mock Telegram message store (`mock_telegram_messages`, `mock_telegram_sent`).
 - Reset command: `python -m env.mock.reset` returns everything to the seed state between runs.
 
-## 7. Run commands (every role file repeats the ones that apply)
+## 7. Run commands (Runbook)
 
 ```
-# backend
-cd agent/backend && uv sync && uv run alembic upgrade head && uv run uvicorn app.main:app --reload --port 8000
+# backend migrations
+cd agent/backend && alembic upgrade head
+
+# backend server
+cd agent/backend && uvicorn app.main:app --reload --port 8000
+
 # guard service
-cd guard && uv sync && uv run uvicorn service.main:app --reload --port 8100
+cd guard && uvicorn service.main:app --reload --port 8100
+
 # frontend
 cd agent/frontend && pnpm install && pnpm dev
-# everything
-docker compose -f env/docker-compose.yml up --build
+
 # tests
-cd agent/backend && uv run pytest ; cd guard && uv run pytest ; cd agent/frontend && pnpm test
+pytest -c guard/pyproject.toml guard/tests
+pytest -c agent/backend/pyproject.toml agent/backend/tests
 ```
+
+### Telegram Connector Setup & Operation
+- **Modes**:
+  - `TELEGRAM_MODE=mock`: Used in development, CI, and evaluation (`APP_ENV=eval` strictly enforces `mock` mode). In mock mode, the connector reads and writes against `env/mock/state.py` without outbound network access.
+  - `TELEGRAM_MODE=real`: Operates via official Telegram Bot API. Requires `TELEGRAM_BOT_TOKEN` obtained from [@BotFather](https://t.me/BotFather).
+- **Environment Configuration**:
+  - `TELEGRAM_MODE=mock|real` (Default: `mock`)
+  - `TELEGRAM_BOT_TOKEN=<your_bot_token>` (Never logged or exposed to model context or frontend)
+  - `TELEGRAM_ALLOWLIST=123456789,987654321` (Comma-separated chat IDs allowed for live messaging)
+  - `TELEGRAM_WEBHOOK_SECRET=<random_secret>` (Validated against `X-Telegram-Bot-Api-Secret-Token` header on `POST /api/connectors/telegram/webhook`)
+- **Account Linking Procedure**:
+  1. User navigates to the Connectors page in EVA frontend.
+  2. Click **Connect Telegram** to generate a single-use verification code (`EVA-XXXXXX`, valid for 10 minutes).
+  3. Send the verification code to the EVA Telegram bot in a private chat.
+  4. The webhook or linking endpoint verifies the code, binds the Telegram `chat_id` and username to the authenticated user account, and invalidates the code. Group and channel chats are rejected.
+- **Security & Guard Enforcement**:
+  - Inbound messages (`telegram.read`, `telegram.history`) are marked `Trust.UNTRUSTED` and scanned via `scan_tool_result` before entering model context.
+  - Outbound messages (`telegram.send`) require explicit human approval via EVA gateway. Re-checking occurs right before dispatch; any edits to destination or message text void previous approval.
+

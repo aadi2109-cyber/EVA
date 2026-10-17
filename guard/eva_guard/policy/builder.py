@@ -24,7 +24,7 @@ URL_REGEX = re.compile(r"https?://[^\s]+")
 
 SANDBOX_TOKEN = "workspace:*"
 WRITE_INTENT_REGEX = re.compile(r"\b(write|save|create|edit|update|overwrite|append|rename|export to)\b", re.I)
-WRITE_TOOLS = {"gmail.send", "gmail.draft", "files.write", "messages.send"}
+WRITE_TOOLS = {"gmail.send", "gmail.draft", "files.write", "messages.send", "telegram.send"}
 
 
 def extract_destinations(text: str) -> list[str]:

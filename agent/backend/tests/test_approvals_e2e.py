@@ -341,10 +341,14 @@ async def test_sse_last_event_id_replay_and_access(async_client, guard_http, scr
     assert [m["data"]["seq"] for m in part] == list(range(cut + 1, n + 1))
     assert part == full[cut:]
 
-    # query-string fallback (EventSource cannot set headers) + access_token
+    # Credentials in URLs can leak through access logs; SSE only accepts Authorization headers.
     tok = h["Authorization"].split()[1]
-    q = parse_sse((await async_client.get(f"/api/tasks/{tid}/events?last_event_id={cut}&access_token={tok}")).text)
-    assert q == part
+    query_token = await async_client.get(f"/api/tasks/{tid}/events?last_event_id={cut}&access_token={tok}")
+    assert query_token.status_code == 401
+    resumed = parse_sse((await async_client.get(
+        f"/api/tasks/{tid}/events?last_event_id={cut}", headers=h
+    )).text)
+    assert resumed == part
 
     # resuming after the terminal event returns an empty, finished stream
     done = await async_client.get(f"/api/tasks/{tid}/events", headers={**h, "Last-Event-ID": str(n)})
@@ -386,7 +390,8 @@ async def test_admin_proxy_role_and_passthrough(async_client, admin_proxy):
     assert (await async_client.get("/api/admin/config", headers=admin_h)).status_code == 200
     # guard errors pass through unchanged, and path escapes are refused
     assert (await async_client.get("/api/admin/nonexistent", headers=admin_h)).status_code == 404
-    assert (await async_client.get("/api/admin/../v1/health", headers=admin_h)).status_code in (400, 404)
+    # encoded dot-segments reach the proxy as '..' (a literal '../' is collapsed by the HTTP client first)
+    assert (await async_client.get("/api/admin/x/%2e%2e/%2e%2e/v1/health", headers=admin_h)).status_code in (400, 404)
 
 
 async def test_admin_proxy_guard_unreachable_is_502(async_client):

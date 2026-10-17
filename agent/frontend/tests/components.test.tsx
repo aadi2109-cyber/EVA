@@ -134,4 +134,21 @@ describe('ApprovalModal', () => {
       vi.useRealTimers();
     }
   });
+
+  it('renders exact telegram.send action and destination chat with plain text sanitization', () => {
+    const tgApproval: ApprovalRequest = {
+      approval_id: 'appr-tg-99',
+      task_id: 't2',
+      exact_action: { tool: 'telegram.send', args: { chat_id: '12345678', text: 'Important alert' } },
+      arg_sources: { chat_id: 'typed by user', text: 'untrusted from telegram' },
+      action_hash: 'hash998877665544332211',
+      expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+    };
+    render(<ApprovalModal approval={tgApproval} onApprove={vi.fn()} onDeny={vi.fn()} />);
+    expect(screen.getByText('telegram.send')).toBeInTheDocument();
+    expect(screen.getByText('12345678')).toBeInTheDocument();
+    expect(screen.getByText('Important alert')).toBeInTheDocument();
+    expect(screen.getByText(/Source: typed by user/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: untrusted from telegram/)).toBeInTheDocument();
+  });
 });

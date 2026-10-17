@@ -1,5 +1,9 @@
 # Contracts Changelog
 
+## [0.2.0] - 2026-10-16
+- Shared types: Added `SourceType.TELEGRAM` ("telegram") for incoming Telegram content provenance.
+- Tools: Documented `telegram.read` / `telegram.history` and `telegram.send` tool definitions and destination mapping.
+
 ## [0.1.0] - 2026-10-15 (G0 Freeze)
 
 ### Initial Frozen Contract

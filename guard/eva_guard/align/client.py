@@ -112,7 +112,7 @@ class AlignClient:
                 return AlignVerdict(verdict="misaligned", score=0.1)
 
         # Action intent contradiction checks
-        is_write = tool in ("gmail.send", "messages.send", "files.write")
+        is_write = tool in ("gmail.send", "messages.send", "telegram.send", "files.write")
         user_wants_read_only = any(
             k in req_lower for k in ["summarize", "read", "list", "show", "search", "check"]
         ) and not any(k in req_lower for k in ["send", "write", "post", "forward", "email"])
