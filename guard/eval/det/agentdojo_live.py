@@ -191,6 +191,7 @@ def main(argv=None):
     ap.add_argument("--smoke", action="store_true", help="tiny run: banking, 2 user tasks x 2 injection tasks")
     ap.add_argument("--logdir", default="eval/det/agentdojo_runs")
     ap.add_argument("--force-rerun", action="store_true")
+    ap.add_argument("--resume", metavar="RUN_DIR", help="continue an interrupted run: reuse this folder, skipping episodes already logged there")
     ap.add_argument("--check", action="store_true", help="preflight only: deps, API key, EVA Guard health; no LLM calls")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation before a large run")
     a = ap.parse_args(argv)
@@ -229,7 +230,9 @@ def main(argv=None):
             sys.exit("aborted")
 
     load_dotenv(".env")
-    logdir = Path(a.logdir) / f"{datetime.datetime.now():%Y%m%d-%H%M%S}-{a.defense}"
+    logdir = Path(a.resume) if a.resume else Path(a.logdir) / f"{datetime.datetime.now():%Y%m%d-%H%M%S}-{a.defense}"
+    if a.resume and not logdir.is_dir():
+        sys.exit(f"--resume: {logdir} does not exist")
     logdir.mkdir(parents=True, exist_ok=True)
     guard = Guard(db_url=f"sqlite:///{logdir}/audit.db")
     pipeline, eva = build_pipeline(a.model, a.provider, a.defense, "tool", guard)
