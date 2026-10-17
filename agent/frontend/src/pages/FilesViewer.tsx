@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../api/client';
 
 /** Client-side guard only; the backend is authoritative. */
-export const MAX_UPLOAD_BYTES = 512 * 1024; // matches the backend (and the agent files.read cap)
+export const MAX_UPLOAD_BYTES = 1024 * 1024; // matches the backend upload limit (1 MB); the AGENT can read files up to 512 KB only
 import { WorkspaceFile } from '../api/types';
 
 export const FilesViewer: React.FC = () => {
@@ -49,7 +49,7 @@ export const FilesViewer: React.FC = () => {
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      setUploadMsg({ ok: false, text: `${file.name} is larger than ${MAX_UPLOAD_BYTES / 1024} KB.` });
+      setUploadMsg({ ok: false, text: `${file.name} is larger than ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.` });
       return;
     }
     setUploading(true);
