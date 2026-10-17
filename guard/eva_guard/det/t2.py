@@ -18,6 +18,24 @@ from eva_guard.det.config import DetConfig
 logger = logging.getLogger(__name__)
 
 
+# A "bare data" fragment carries no instruction: a lone address, URL, number/date, or just a YAML key.
+# The learned model over-fires on such fragments (it treats `com`/`org`/`@` as attack tokens), which strips
+# participant lists and similar structured data from tool output. T1 rules still apply to them.
+_ADDR = r"<?[\w.+-]+@[\w-]+(?:\.[\w-]+)+>?"
+_LITERAL = r"(?:true|false|null|none|yes|no|~|r|rw|w|read|write|\d+)"          # flags / permission codes
+_VALUE = rf"(?:{_ADDR}(?:\s*[,;]\s*{_ADDR})*|https?://[^\s?#]+/?|\d[\d\-:/. TZ+]*|{_LITERAL}(?![\w]))"
+_BARE_DATA = re.compile(
+    rf"""^\s*(?:-\s*)?                        # optional YAML list dash
+        (?:(?:{_ADDR}|["']?[A-Za-z_][\w ]{{0,30}}["']?):\s*)?   # optional `key:` (a plain key or an address)
+        ["']?(?:{_VALUE})?["']?\s*,?\s*$""", re.VERBOSE)
+
+
+def is_bare_data(sentence: str) -> bool:
+    """True for fragments such as `- a@b.com`, `email: a@b.com`, `participants:`, `date: 2024-05-26`."""
+    s = sentence.strip()
+    return bool(s) and len(s) <= 200 and _BARE_DATA.match(s) is not None
+
+
 class Score(NamedTuple):
     main: float
     aux: float
@@ -160,18 +178,25 @@ class OnnxTier2Scorer(Tier2Scorer):
         if not sentences:
             return []
         import numpy as np
-        main: list[float] = []
-        aux: list[float] = []
-        for i in range(0, len(sentences), self.BATCH_SIZE):  # bound peak memory on huge fields
-            batch = np.array([[s.lower()] for s in sentences[i:i + self.BATCH_SIZE]], dtype=object)
-            main += self._positive_probs(self._main, batch)
-            aux += self._positive_probs(self._aux, batch)
+        bare = [is_bare_data(s) for s in sentences]
+        idx = [i for i, b in enumerate(bare) if not b]          # only non-bare fragments go to the model
+        todo = [sentences[i] for i in idx]
+        main_m: list[float] = []
+        aux_m: list[float] = []
+        for i in range(0, len(todo), self.BATCH_SIZE):  # bound peak memory on huge fields
+            batch = np.array([[s.lower()] for s in todo[i:i + self.BATCH_SIZE]], dtype=object)
+            main_m += self._positive_probs(self._main, batch)
+            aux_m += self._positive_probs(self._aux, batch)
+        main = [0.0] * len(sentences)
+        aux = [0.0] * len(sentences)
+        for j, i in enumerate(idx):
+            main[i], aux[i] = main_m[j], aux_m[j]
         results: list[Score] = []
-        for s, m, a in zip(sentences, main, aux):
+        for s, m, a, b in zip(sentences, main, aux, bare):
             if not s.strip():
                 results.append(Score(main=0.0, aux=0.0))
                 continue
-            m = max(m, scan_t1(s).score)
+            m = max(m, scan_t1(s).score)                        # bare fragments: rules only (m starts at 0)
             hits = sum(1 for p in _META_DISCUSSION_PATTERNS if p.search(s))
             if hits:
                 a = max(a, min(0.95, 0.4 + hits * 0.25))  # rule-based meta signal floors the aux head
