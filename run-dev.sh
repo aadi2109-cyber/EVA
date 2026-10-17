@@ -42,13 +42,9 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-# main refuses the placeholder JWT_SECRET in env/.env.example, so generate a local
-# one into the git-ignored env/.env the first time (unless the shell already sets it).
-ENV_FILE="$ROOT/env/.env"
-if [ -z "${JWT_SECRET:-}" ] && ! grep -Eq '^JWT_SECRET=.{32,}' "$ENV_FILE" 2>/dev/null; then
-  echo ">> generating JWT_SECRET in env/.env"
-  printf 'JWT_SECRET=%s\n' "$("$PY" -c 'import secrets; print(secrets.token_urlsafe(48))')" >> "$ENV_FILE"
-fi
+# main rejects a short/placeholder JWT_SECRET (env/.env.example ships one): make sure
+# the git-ignored env/.env holds a real one.
+"$PY" "$ROOT/scripts/ensure_jwt_secret.py" "$ROOT/env/.env" || die "JWT_SECRET problem (see above)"
 
 echo ">> migrating database"
 (cd "$BACKEND_DIR" && "$PY" -m alembic upgrade head)

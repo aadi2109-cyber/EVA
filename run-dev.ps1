@@ -33,15 +33,10 @@ if ($env:PYTHONPATH) { $paths += $env:PYTHONPATH }
 $env:PYTHONPATH = $paths -join ';'
 if (-not $env:VITE_API_BASE) { $env:VITE_API_BASE = "http://localhost:$BackendPort" }
 
-# main refuses the placeholder JWT_SECRET in env/.env.example, so generate a local
-# one into the git-ignored env/.env the first time (unless the shell already sets it).
-$EnvFile = Join-Path $Root 'env\.env'
-$hasSecret = [bool]$env:JWT_SECRET -or ((Test-Path $EnvFile) -and (Select-String -Path $EnvFile -Pattern '^JWT_SECRET=.{32,}' -Quiet))
-if (-not $hasSecret) {
-    Write-Host '>> generating JWT_SECRET in env/.env'
-    $secret = (& $Py -c 'import secrets; print(secrets.token_urlsafe(48))').Trim()
-    Add-Content -Path $EnvFile -Value "JWT_SECRET=$secret" -Encoding ascii
-}
+# main rejects a short/placeholder JWT_SECRET (env/.env.example ships one): make sure
+# the git-ignored env/.env holds a real one.
+& $Py (Join-Path $Root 'scripts\ensure_jwt_secret.py') (Join-Path $Root 'env\.env')
+if ($LASTEXITCODE -ne 0) { Fail 'JWT_SECRET problem (see above)' }
 
 $procs = @()
 try {
