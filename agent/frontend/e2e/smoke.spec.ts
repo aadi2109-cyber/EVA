@@ -69,3 +69,30 @@ test('admin: proposing a config change needs a justification and says a second a
   await expect(page.getByRole('status').first()).toContainText('different admin must approve');
   expect(stub.proposals[0]).toMatchObject({ changes: { failure_mode: 'tier1_only_warning' }, justification: 'demo' });
 });
+
+test('files: Upload sends multipart form data, then lists and shows the file', async ({ page }) => {
+  const stub = await stubApi(page);
+  await login(page);
+  await page.getByRole('button', { name: /Files/ }).first().click();
+  await expect(page.getByText('This folder is empty.')).toBeVisible();
+
+  await page.getByLabel('Choose a file to upload').setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('hello'),
+  });
+
+  await expect(page.getByRole('status')).toContainText('Uploaded notes.txt');
+  await expect(page.getByText('hello upload')).toBeVisible();
+  expect(stub.uploaded).toHaveLength(1);
+  expect(stub.uploaded[0].contentType).toMatch(/^multipart\/form-data; boundary=/);
+  expect(stub.uploaded[0].name).toBe('notes.txt');
+});
+
+test('files: a backend without an upload endpoint gets a clear message', async ({ page }) => {
+  await stubApi(page, { uploadStatus: 404 });
+  await login(page);
+  await page.getByRole('button', { name: /Files/ }).first().click();
+  await page.getByLabel('Choose a file to upload').setInputFiles({ name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('a') });
+  await expect(page.getByRole('alert')).toContainText('does not support uploads yet');
+});

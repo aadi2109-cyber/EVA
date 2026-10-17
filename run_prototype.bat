@@ -8,15 +8,11 @@ echo.
 
 cd /d "%~dp0"
 
-REM 1. Check if frontend bundle exists; if not, build it
-if not exist "agent\frontend\dist\index.html" (
-    echo [1/3] Building frontend bundle...
-    cd agent\frontend
-    call npm run build
-    cd ..\..
-) else (
-    echo [1/3] Frontend bundle found.
-)
+REM 1. Build frontend bundle
+echo [1/3] Building frontend bundle...
+cd agent\frontend
+call npm run build
+cd ..\..
 
 REM 2. Run migrations to ensure database schema is up-to-date
 echo [2/3] Checking database migrations...
