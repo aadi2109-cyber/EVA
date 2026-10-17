@@ -89,6 +89,29 @@ def propose_config_change(req: ConfigProposalRequest):
     return ConfigProposalResponse(**proposal)
 
 
+@router.get("/config/proposals", summary="List Config Proposals")
+def list_config_proposals(status: str | None = Query(None, pattern="^(pending|approved|rejected)$")):
+    return get_guard_instance()._store.list_proposals(status if isinstance(status, str) else None)
+
+
+@router.post("/config/proposals/{proposal_id}/reject", response_model=ConfigProposalResponse, summary="Reject / Withdraw Config Proposal")
+def reject_config_proposal(proposal_id: str, rejecter_id: str = Header(..., alias="X-Admin-User-Id")):
+    """Any admin (including the proposer, i.e. withdrawal) may reject a pending proposal. Rejecting never changes config."""
+    guard = get_guard_instance()
+    proposal = guard._store.get_proposal(proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if proposal["status"] != "pending":
+        raise HTTPException(status_code=400, detail=f"Proposal is already {proposal['status']}")
+    proposal["status"] = "rejected"
+    proposal["approved_by"] = None
+    proposal["rejected_by"] = rejecter_id
+    proposal["rejected_at"] = datetime.now(timezone.utc).isoformat()
+    guard._store.put_proposal(proposal)
+    guard._audit_safe(proposal_id, "config.rejected", f"admin:{rejecter_id}", {"proposal_id": proposal_id, "proposed_by": proposal["proposed_by"]})
+    return ConfigProposalResponse(**proposal)
+
+
 @router.post("/config/proposals/{proposal_id}/approve", response_model=ConfigProposalResponse, summary="Approve Config Proposal (Four-Eyes)")
 def approve_config_proposal(proposal_id: str, approver_id: str = Header(..., alias="X-Admin-User-Id")):
     """
@@ -180,12 +203,36 @@ def set_kill_switch(req: KillSwitchRequest):
 
 
 @router.get("/review-queue", summary="List Quarantined/Held Review Items")
-def list_review_queue():
-    return get_guard_instance()._store.list_review_items()
+def list_review_queue(status: str | None = Query(None, pattern="^(pending|decided)$")):
+    status = status if isinstance(status, str) else None  # direct calls (tests) pass the Query default object
+    items = get_guard_instance()._store.list_review_items()
+    return [i for i in items if status is None or i.get("status", "decided" if i.get("decision") else "pending") == status]
+
+
+@router.get("/templates", summary="List Policy Templates (read-only)")
+def list_templates():
+    b = get_guard_instance()._policy_builder
+    return [{"template_id": k, **{f: v.get(f) for f in ("description", "allowed_operations", "prohibited_side_effects", "approval_required_for", "allowed_destinations", "minimum_detector_posture", "failure_mode", "max_steps")}}
+            for k, v in sorted(b._templates.items())]
+
+
+@router.get("/templates/{template_id}", summary="Get Policy Template (read-only)")
+def get_template(template_id: str):
+    t = get_guard_instance()._policy_builder._templates.get(template_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    return {"template_id": template_id, **t}
+
+
+@router.api_route("/templates", methods=["POST"], summary="Templates are not editable at runtime")
+@router.api_route("/templates/{template_id}", methods=["PUT"], summary="Templates are not editable at runtime")
+def templates_not_editable(template_id: str | None = None):
+    # Policy templates define what a task may ever do; they change through code review, not a runtime API.
+    raise HTTPException(status_code=405, detail="Policy templates are versioned in the repository and cannot be edited at runtime")
 
 
 @router.post("/review-queue/{id}/decision", summary="Submit Human Review Decision")
-def submit_review_decision(id: str, req: ReviewDecisionRequest):
+def submit_review_decision(id: str, req: ReviewDecisionRequest, admin_id: str | None = Header(None, alias="X-Admin-User-Id")):
     """
     Records a human review decision on flagged or held content.
     CRITICAL PRINCIPLE: Review decisions NEVER grant tool execution authority.
@@ -196,7 +243,10 @@ def submit_review_decision(id: str, req: ReviewDecisionRequest):
         # Create an on-demand record if needed
         item = {"id": id, "created_at": datetime.now(timezone.utc).isoformat()}
 
-    item["reviewer_id"] = req.reviewer_id
+    # The authenticated admin identity (header from the BE proxy) overrides any client-supplied reviewer_id.
+    reviewer = admin_id or req.reviewer_id
+    item["reviewer_id"] = reviewer
+    item["status"] = "decided"
     item["decision"] = req.decision
     item["notes"] = req.notes
     item["decided_at"] = datetime.now(timezone.utc).isoformat()
@@ -206,7 +256,7 @@ def submit_review_decision(id: str, req: ReviewDecisionRequest):
         guard._audit.log_event(
             task_id=id,
             event_type="review.decision",
-            actor=f"reviewer:{req.reviewer_id}",
+            actor=f"reviewer:{reviewer}",
             payload={"decision": req.decision, "notes": req.notes},
         )
     except Exception as e:

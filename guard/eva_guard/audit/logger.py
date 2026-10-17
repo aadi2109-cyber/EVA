@@ -70,6 +70,7 @@ class AuditLogger:
 
     def __init__(self, db_path: str | Path | None = None, db_url: str | None = None) -> None:
         if db_path is None:
+            db_url = db_url or os.getenv("GUARD_DATABASE_URL")
             if db_url and db_url.startswith("sqlite:///"):
                 self.db_path = Path(db_url.replace("sqlite:///", ""))
             else:

@@ -7,6 +7,7 @@ Owner: SEC-2 (Authority-side Security)
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 import os
 from typing import Any
 
@@ -230,7 +231,21 @@ class Guard:
         except Exception as e:
             logger.error(f"Audit failure during scan: {e}")
 
+        if resp.disposition in ("quarantined", "held"):
+            self._enqueue_review(req, resp)
+
         return resp
+
+    def _enqueue_review(self, req: ScanRequest, resp: ScanResponse) -> None:
+        """Held/quarantined content goes to the human review queue (metadata only, never raw text)."""
+        try:
+            self._store.put_review_item({
+                "id": resp.event_id, "task_id": req.task_id, "call_id": req.call_id, "tool": req.tool,
+                "disposition": resp.disposition, "fields": [f.name for f in req.fields],
+                "t1_signals": resp.det_summary.t1_signals, "warnings": resp.warnings, "status": "pending",
+                "created_at": datetime.now(timezone.utc).isoformat()})
+        except Exception as e:  # noqa: BLE001 - review queue is informational; never blocks the (already safe) scan result
+            logger.error(f"Review enqueue failed: {e}")
 
     def check_action(self, req: CheckActionRequest) -> CheckActionResponse:
         """

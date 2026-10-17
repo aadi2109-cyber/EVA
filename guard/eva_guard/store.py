@@ -153,3 +153,8 @@ class GuardStore:
     def list_review_items(self) -> list[dict[str, Any]]:
         with self._conn() as c:
             return [json.loads(r["item_json"]) for r in c.execute("SELECT item_json FROM review_items ORDER BY rowid")]
+
+    def list_proposals(self, status: str | None = None) -> list[dict[str, Any]]:
+        with self._conn() as c:
+            rows = [json.loads(r["proposal_json"]) for r in c.execute("SELECT proposal_json FROM config_proposals ORDER BY rowid DESC")]
+        return [p for p in rows if status is None or p.get("status") == status]

@@ -38,6 +38,9 @@ CREATE INDEX IF NOT EXISTS idx_eval_runs_kind_ts ON eval_runs(kind, created_at);
 
 
 def default_db_path() -> Path:
+    url = os.getenv("GUARD_DATABASE_URL", "")
+    if url.startswith("sqlite:///") and not os.getenv("GUARD_DB_PATH"):
+        return Path(url[len("sqlite:///"):])
     return Path(os.getenv("GUARD_DB_PATH", str(Path(__file__).resolve().parents[1] / "guard.db")))
 
 
@@ -70,7 +73,7 @@ class EvalStore:
         if kind not in KINDS:
             raise ValueError(f"unknown eval kind {kind!r}")
         run_id = f"run-{uuid.uuid4().hex[:12]}"
-        versions = {"contract": CONTRACT_VERSION, **(versions or {})}
+        versions = {"contract": CONTRACT_VERSION, "config": self._config_version(), **(versions or {})}
         with self._conn() as c:
             c.execute(
                 "INSERT INTO eval_runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -80,11 +83,27 @@ class EvalStore:
             )
         return run_id
 
+    def _config_version(self) -> int | None:
+        try:
+            with self._conn() as c:
+                r = c.execute("SELECT MAX(version) AS v FROM config_versions").fetchone()
+            return r["v"]
+        except sqlite3.Error:
+            return None
+
     @staticmethod
     def _row(r: sqlite3.Row, full: bool) -> dict[str, Any]:
+        summary = json.loads(r["summary_json"])
+        failures = json.loads(r["failures_json"])
+        versions = json.loads(r["versions_json"])
+        cfg = json.loads(r["config_json"])
         d = {"id": r["id"], "kind": r["kind"], "created_at": r["created_at"], "git_sha": r["git_sha"],
              "contract_version": r["contract_version"], "hardware": r["hardware"], "seed": r["seed"], "n": r["n"],
-             "summary": json.loads(r["summary_json"]), "failed_count": len(json.loads(r["failures_json"]))}
+             "summary": summary, "failed_count": len(failures),
+             # FE/BE shape (BE-to-SEC2-02): additive aliases of the fields above
+             "profile": cfg.get("profile") or ("all" if r["kind"] == "scenarios" else r["kind"]),
+             "config_version": versions.get("config"), "split": summary.get("split") or cfg.get("split"),
+             "metrics": summary, "failed_traces": failures[:20]}
         if full:
             d.update(config=json.loads(r["config_json"]), versions=json.loads(r["versions_json"]),
                      failures=json.loads(r["failures_json"]))

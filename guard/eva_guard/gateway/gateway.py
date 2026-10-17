@@ -244,6 +244,13 @@ class PolicyGateway:
         if policy and policy.minimum_detector_posture == "tier2_required" and not tier2_available and is_side_effect:
             reasons.append(ReasonCode.POSTURE_DEGRADED)
 
+        # web.search `query` leaves the system to a third party: when its provenance is UNTRUSTED (copied from a
+        # tool output, not typed by the user) it is treated like a destination arg (BE-to-SEC2-01).
+        if req.tool == "web.search":
+            qprov = req.arg_provenance.get("query")
+            if qprov and qprov.trust == Trust.UNTRUSTED and req.args.get("query"):
+                untrusted_dest = True
+
         # If any of Rules 1-8 produced a hard DENY reason:
         deny_reasons = [
             r for r in reasons if r in (

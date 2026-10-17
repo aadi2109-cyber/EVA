@@ -204,7 +204,7 @@ Each SSE message: `event: <type>`, `data: {task_id, seq, ts, ...payload}`. `seq`
 |---|---|
 | `task.started` | `{policy: TaskPolicy summary, guard_health}` |
 | `model.delta` | `{text}` (assistant text stream) |
-| `plan.step` | `{index, title, status}` |
+| `plan.step` | `{index: 0-based int, title, status: running\|completed\|failed}`; one `running` and one terminal event per step, always closed before the task's terminal event |
 | `tool.requested` | `{call_id, tool, args, arg_sources}` |
 | `guard.decision` | `{call_id, decision, reasons, reason_text, align}` |
 | `approval.required` | `{approval: ApprovalRequest}` |
