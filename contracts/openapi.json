@@ -207,6 +207,44 @@
         }
       }
     },
+    "/v1/audit-event": {
+      "post": {
+        "summary": "Append an allow-listed metadata event to the audit chain",
+        "operationId": "record_event_v1_audit_event_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordEventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/health": {
       "get": {
         "summary": "Guard Health and Posture",
@@ -1161,6 +1199,62 @@
           "STEP_BUDGET"
         ],
         "title": "ReasonCode"
+      },
+      "RecordEventRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "file.uploaded",
+              "file.upload_rejected"
+            ],
+            "title": "Type"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id",
+            "default": "files"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "actor"
+        ],
+        "title": "RecordEventRequest",
+        "description": "POST /v1/audit-event: lets a trusted caller (BE) append an allow-listed event to the hash-chained audit log."
+      },
+      "RecordEventResponse": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "0.1.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "hash"
+        ],
+        "title": "RecordEventResponse"
       },
       "ReviewDecisionRequest": {
         "properties": {

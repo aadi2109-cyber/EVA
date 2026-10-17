@@ -309,3 +309,16 @@ export interface AuditVerifyResponse {
   tampered_event_id?: string | null;
   message: string;
 }
+
+export interface RecordEventRequest {
+  type: "file.uploaded" | "file.upload_rejected";
+  actor: string;
+  task_id?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface RecordEventResponse {
+  event_id: string;
+  hash: string;
+  contract_version: string;
+}

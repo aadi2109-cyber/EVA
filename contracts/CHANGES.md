@@ -32,3 +32,7 @@
 - Approval `expires_at` = min(now + 10 min, policy expiry) (was the 2 h policy expiry).
 - `web.search`: a declared-UNTRUSTED `query` provenance requires approval (`UNTRUSTED_ARG_PROVENANCE`).
 - Admin API (§7): `GET /config/proposals`, `POST /config/proposals/{id}/reject`, `GET /eval/runs|/eval/runs/{id}|/eval/summary`, `GET /templates[/{id}]` (read-only; `POST/PUT /templates` return 405 by design), `GET /review-queue?status=`. `X-Admin-User-Id` overrides client-supplied `reviewer_id`. Held/quarantined scans enqueue review items.
+
+## Additive: audit-event recording (BE-to-SEC2-03) — contract stays 0.1.0
+- New models `RecordEventRequest` / `RecordEventResponse`; `Guard.record_event(req)` and `POST /v1/audit-event`. Only `file.uploaded` and `file.upload_rejected` may be recorded by callers; actor must start with `user:`/`system:`/`service:`; payload is metadata only (keys such as `content`/`text`/`body` are refused, 4 KB cap). Security events (`gateway.*`, `det.*`, `config.*`, `approval.*`, `kill_switch.*`) remain guard-only.
+- Doc 02 §6 gains the upload row; §5 `tool.output` field is `sanitized_output`.

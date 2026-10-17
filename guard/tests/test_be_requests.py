@@ -98,3 +98,35 @@ def test_dockerfile_matches_compose_expectations():
     d = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
     assert "--port\", \"8100\"" in d and "service.main:app" in d and "COPY contracts" in d and "USER eva-guard" in d
     assert "agent/backend" not in d.replace("agent/backend sources", "")
+
+
+def test_record_event_allowlist_metadata_only_and_hash_chain(g):
+    from contracts.models import RecordEventRequest
+    ok = g.record_event(RecordEventRequest(type="file.uploaded", actor="user:u1", payload={"path": "a.txt", "size": 3, "sha256": "ab" * 32, "outcome": "ok"}))
+    g.record_event(RecordEventRequest(type="file.upload_rejected", actor="user:u1", payload={"path": "b.txt", "reason": "exists"}))
+    ev = g._audit.query(task_id="files")
+    assert {e.type for e in ev} == {"file.uploaded", "file.upload_rejected"} and ok.hash
+    assert g._audit.verify_chain().valid
+    for bad in (dict(actor="u1", payload={}),                                   # actor prefix
+                dict(actor="user:u", payload={"content": "file text"}),          # raw content
+                dict(actor="user:u", payload={"x": "y" * 5000})):                # size cap
+        with pytest.raises(ValueError):
+            g.record_event(RecordEventRequest(type="file.uploaded", **bad))
+    with pytest.raises(Exception):  # forging a security event is impossible at the model level
+        RecordEventRequest(type="gateway.decision", actor="user:u")
+
+
+def test_record_event_http_and_audit_failure(g, monkeypatch):
+    from fastapi.testclient import TestClient
+    import service.main as svc
+    monkeypatch.setattr(svc, "guard_instance", g)
+    c = TestClient(svc.app, raise_server_exceptions=False)
+    H = {"Authorization": f"Bearer {svc.SERVICE_TOKEN}"}
+    body = {"type": "file.uploaded", "actor": "user:u1", "payload": {"path": "a.txt", "size": 1}}
+    assert c.post("/v1/audit-event", json=body).status_code == 401
+    r = c.post("/v1/audit-event", json=body, headers=H)
+    assert r.status_code == 200 and r.json()["event_id"]
+    assert c.post("/v1/audit-event", json={**body, "type": "config.changed"}, headers=H).status_code == 422
+    assert c.post("/v1/audit-event", json={**body, "payload": {"content": "x"}}, headers=H).status_code == 422
+    monkeypatch.setattr(g._audit, "log_event", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk full")))
+    assert c.post("/v1/audit-event", json=body, headers=H).status_code == 500  # failure is visible, never reported as logged

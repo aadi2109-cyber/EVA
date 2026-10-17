@@ -24,6 +24,8 @@ from contracts.models import (
     VerifyStateRequest,
     VerifyStateResponse,
     Health,
+    RecordEventRequest,
+    RecordEventResponse,
     KillSwitchState,
     ReasonCode,
 )
@@ -344,6 +346,29 @@ class Guard:
         Runs post-state assertions independently against observed state.
         """
         return self._verifier.verify(req)
+
+    # Event types a caller outside the guard may append. Security decisions (gateway.*, det.*, config.*, approval.*,
+    # kill_switch.*) are written only by the guard itself, so BE cannot forge them.
+    EXTERNAL_EVENT_TYPES = frozenset({"file.uploaded", "file.upload_rejected"})
+    _RAW_CONTENT_KEYS = frozenset({"content", "text", "body", "data", "raw", "snippet"})
+    MAX_EVENT_PAYLOAD_BYTES = 4096
+
+    def record_event(self, req: RecordEventRequest) -> RecordEventResponse:
+        """Append an allow-listed, metadata-only event to the audit hash chain. Raises ValueError on a bad request
+        and RuntimeError if the audit write fails (callers must treat that as failure, not as logged)."""
+        import json as _json
+        if req.type not in self.EXTERNAL_EVENT_TYPES:
+            raise ValueError(f"event type {req.type!r} may not be recorded by callers")
+        if not req.actor.startswith(("user:", "system:", "service:")):
+            raise ValueError("actor must start with user:, system: or service:")
+        bad = sorted(k for k in req.payload if str(k).lower() in self._RAW_CONTENT_KEYS)
+        if bad:
+            raise ValueError(f"payload must be metadata only; remove keys: {bad}")
+        if len(_json.dumps(req.payload, default=str)) > self.MAX_EVENT_PAYLOAD_BYTES:
+            raise ValueError("payload too large")
+        ev = self._audit.log_event(task_id=req.task_id, event_type=req.type, actor=req.actor,
+                                   payload={**req.payload, "recorded_via": "record_event"})
+        return RecordEventResponse(event_id=ev.id, hash=ev.hash)
 
     def health(self) -> Health:
         """

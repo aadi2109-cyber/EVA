@@ -21,6 +21,8 @@ from contracts.models import (
     CheckActionRequest,
     CheckActionResponse,
     Health,
+    RecordEventRequest,
+    RecordEventResponse,
     ScanRequest,
     ScanResponse,
     SubmitApprovalRequest,
@@ -186,6 +188,14 @@ async def verify_state(
 
 
 # 2.6 health
+@app.post("/v1/audit-event", response_model=RecordEventResponse, summary="Append an allow-listed metadata event to the audit chain")
+def record_audit_event(req: RecordEventRequest, _: str = Depends(verify_bearer_token)):
+    try:
+        return guard_instance.record_event(req)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @app.get("/v1/health", response_model=Health, summary="Guard Health and Posture")
 async def health() -> Health:
     return guard_instance.health()

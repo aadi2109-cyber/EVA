@@ -320,6 +320,20 @@ class AuditEvent(BaseModel):
     hash: str
 
 
+class RecordEventRequest(BaseModel):
+    """POST /v1/audit-event: lets a trusted caller (BE) append an allow-listed event to the hash-chained audit log."""
+    type: Literal["file.uploaded", "file.upload_rejected"]
+    actor: str                              # e.g. "user:<id>"
+    task_id: str = "files"                  # grouping key in the audit explorer
+    payload: dict[str, Any] = Field(default_factory=dict)   # metadata only: never file content / raw text
+
+
+class RecordEventResponse(BaseModel):
+    event_id: str
+    hash: str
+    contract_version: str = CONTRACT_VERSION
+
+
 class AuditVerifyResponse(BaseModel):
     valid: bool
     chain_length: int

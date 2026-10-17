@@ -211,7 +211,7 @@ Each SSE message: `event: <type>`, `data: {task_id, seq, ts, ...payload}`. `seq`
 | `guard.decision` | `{call_id, decision, reasons, reason_text, align}` |
 | `approval.required` | `{approval: ApprovalRequest}` |
 | `approval.resolved` | `{approval_id, status}` |
-| `tool.started` / `tool.output` | `{call_id, ...}`; `tool.output` carries the **sanitized** result and `scan: ScanResponse` summary (never raw flagged text) |
+| `tool.started` / `tool.output` | `{call_id, ...}`; `tool.output` carries the **sanitized** result as `sanitized_output` (string) and a `scan: ScanResponse` summary (never raw flagged text) |
 | `guard.scan` | `{call_id, disposition, sentences_removed, tier2_available, warnings}` |
 | `state.verified` | `{call_id, passed, failures}` |
 | `health.degraded` | `{tier2_available, t3_available, failure_mode}` |
@@ -236,6 +236,7 @@ JWT bearer (login returns `access_token`). All JSON.
 | `GET /oauth/gmail/callback` | OAuth redirect target |
 | `DELETE /api/connectors/gmail` | disconnect + delete stored tokens |
 | `GET /api/files?path=` / `GET /api/files/content?path=` | workspace browsing (read-only for UI) |
+| `POST /api/files/upload?path=<dir>` | user-initiated text upload (multipart field `file`, <= 1 MB, never overwrites, caller's own workspace only). 201 `{path,size}`; 400/409/411/413/415/503 per `coordination/requests/BE-to-FE-02.md`. **Not a `check_action`** (user action, not an agent tool call); the agent can only read the file back via `files.read`, whose output is always `UNTRUSTED` and scanned. Each attempt is mirrored to the guard audit chain via `POST /v1/audit-event` (`file.uploaded` / `file.upload_rejected`, metadata only). Subject to the `all_write_tools` kill switch: BE must refuse uploads (503) while it is on. |
 | `GET /api/health` | `{backend, guard: Health}` |
 | `/api/admin/*` | admin only; BE proxies to guard `/admin/v1/*` unchanged (JWT role=admin required) |
 

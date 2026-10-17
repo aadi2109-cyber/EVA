@@ -29,6 +29,8 @@ from contracts.models import (
     ReviewDecisionRequest,
     AuditEvent,
     AuditVerifyResponse,
+    RecordEventRequest,
+    RecordEventResponse,
 )
 
 app = FastAPI(
@@ -60,6 +62,11 @@ def submit_approval(approval_id: str, req: SubmitApprovalRequest):
 # 2.5 verify_state
 @app.post("/v1/verify-state", response_model=VerifyStateResponse, summary="Verify Post-Execution State")
 def verify_state(req: VerifyStateRequest):
+    ...
+
+# 2.7 record_event (allow-listed, metadata only)
+@app.post("/v1/audit-event", response_model=RecordEventResponse, summary="Append an allow-listed metadata event to the audit chain")
+def record_event(req: RecordEventRequest):
     ...
 
 # 2.6 health
