@@ -32,6 +32,8 @@ const json = (route: Route, body: unknown, status = 200) =>
 
 export interface Stub {
   role?: 'user' | 'admin';
+  uploaded: { name: string; contentType: string; body: string }[];
+  uploadStatus?: number;
   proposals: any[];
   events?: Ev[];
   health?: unknown;
@@ -40,7 +42,7 @@ export interface Stub {
 
 /** Stub every /api call the UI makes. Returns a record of approval submissions. */
 export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stub> {
-  const stub: Stub = { events: [], health: HEALTHY, approvals: [], proposals: [], ...opts };
+  const stub: Stub = { events: [], health: HEALTHY, approvals: [], proposals: [], uploaded: [], ...opts };
   const me = { ...USER, role: stub.role ?? 'user' };
 
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
@@ -68,6 +70,17 @@ export async function stubApi(page: Page, opts: Partial<Stub> = {}): Promise<Stu
     if (path.startsWith('/api/approvals/')) {
       stub.approvals.push({ id: path.split('/').pop()!, body: req.postDataJSON() });
       return json(route, { status: 'approved', event_id: 'e1' });
+    }
+    if (path === '/api/files/upload') {
+      if (stub.uploadStatus && stub.uploadStatus !== 201) return json(route, { detail: 'nope' }, stub.uploadStatus);
+      const body = req.postData() ?? '';
+      const name = /filename="([^"]+)"/.exec(body)?.[1] ?? '';
+      stub.uploaded.push({ name, contentType: req.headers()['content-type'] ?? '', body });
+      return json(route, { path: name, size: 5 }, 201);
+    }
+    if (path === '/api/files/content') return json(route, { path: url.searchParams.get('path'), content: 'hello upload' });
+    if (path === '/api/files') {
+      return json(route, stub.uploaded.map((u) => ({ name: u.name, is_dir: false, size: 5 })));
     }
     if (path === '/api/admin/health') return json(route, (stub.health as any).guard);
     if (path === '/api/admin/config') {

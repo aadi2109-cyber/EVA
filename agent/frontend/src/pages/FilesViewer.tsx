@@ -1,5 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import React, { useEffect, useRef, useState } from 'react';
+import { api, ApiError } from '../api/client';
+
+/** Client-side guard only; the backend is authoritative. */
+export const MAX_UPLOAD_BYTES = 1024 * 1024;
 import { WorkspaceFile } from '../api/types';
 
 export const FilesViewer: React.FC = () => {
@@ -10,18 +13,66 @@ export const FilesViewer: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [reload, setReload] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pendingSelect, setPendingSelect] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     setLoading(true);
-    setSelectedFile(null);
     api.files
       .list(dir)
       .then((f) => {
         setFiles(f);
         setError(null);
+        if (pendingSelect) {
+          setSelectedFile(f.find((x) => x.path === pendingSelect) ?? null);
+          setPendingSelect(null);
+        } else {
+          setSelectedFile(null);
+        }
       })
       .catch((e) => setError(e?.message || 'Failed to list files'))
       .finally(() => setLoading(false));
-  }, [dir]);
+    // pendingSelect is only read right after an upload triggers a reload
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dir, reload]);
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    setUploadMsg(null);
+    if (/[\\/]/.test(file.name)) {
+      setUploadMsg({ ok: false, text: 'File names cannot contain slashes.' });
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadMsg({ ok: false, text: `${file.name} is larger than ${MAX_UPLOAD_BYTES / 1024} KB.` });
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await api.files.upload(dir, file);
+      setUploadMsg({ ok: true, text: `Uploaded ${file.name} (${res.size} B).` });
+      setPendingSelect(res.path);
+      setReload((n) => n + 1);
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      const text =
+        status === 404 || status === 405
+          ? 'This backend does not support uploads yet.'
+          : status === 409
+          ? `${file.name} already exists in this folder.`
+          : status === 413
+          ? `${file.name} is too large for the server.`
+          : (err as Error)?.message || 'Upload failed';
+      setUploadMsg({ ok: false, text });
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedFile) return;
@@ -45,18 +96,43 @@ export const FilesViewer: React.FC = () => {
           </div>
           <div>
             <h1 className="text-lg font-bold text-white tracking-tight">
-              Sandboxed Workspace Browser (Read-Only)
+              Sandboxed Workspace Browser
             </h1>
             <p className="text-xs text-on-surface-variant">
-              Controlled environment filesystem. Agent reads are logged; writes require explicit user approval.
+              Controlled environment filesystem. Uploaded files are treated as untrusted when the agent reads them; agent writes require explicit approval.
             </p>
           </div>
         </div>
 
-        <span className="font-mono text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30 font-bold">
-          SANDBOX LOCKED
-        </span>
+        <div className="flex items-center gap-3">
+          <input ref={fileInput} type="file" className="hidden" aria-label="Choose a file to upload" onChange={onPickFile} />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInput.current?.click()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-container text-on-primary-container font-bold text-xs disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-[16px]">upload</span>
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+          <span className="font-mono text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30 font-bold">
+            SANDBOX LOCKED
+          </span>
+        </div>
       </section>
+
+      {uploadMsg && (
+        <p
+          role={uploadMsg.ok ? 'status' : 'alert'}
+          className={`text-xs rounded-xl px-4 py-2 border ${
+            uploadMsg.ok
+              ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+              : 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+          }`}
+        >
+          {uploadMsg.text}
+        </p>
+      )}
 
       {/* Explorer Grid */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">

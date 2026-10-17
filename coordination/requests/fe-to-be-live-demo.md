@@ -13,3 +13,11 @@
 8. **No `GET /config/proposals`.** The second admin has no way to list pending proposals. FE derives them from the audit log (`config.proposed` without a matching `config.changed` for the same `task_id`). Please add a proper list endpoint (SEC-2); FE will switch to it.
 9. **Review queue is never populated.** Only `POST /review-queue/{id}/decision` creates items (on demand); quarantined/held scans do not enqueue anything. FE therefore lets an admin record a decision against an entered ID as well as listed items.
 10. **Config proposals never reject.** `status` allows `rejected` but there is no reject endpoint, and any proposal (not only posture-lowering ones) needs a second admin. FE does not guess which are "lowering"; it says all proposals need a different admin.
+
+## Files upload (FE built, BE endpoint needed)
+
+11. **`POST /api/files/upload?path=<dir>`** — FE now has an Upload button on the Files page that sends `multipart/form-data` with one field `file` and expects `201 {path, size}` (path relative to the user's workspace, same form as `GET /api/files`). Until this exists the FE shows "This backend does not support uploads yet" (on 404/405). Suggested server rules (BE/SEC-2 decide):
+    - resolve `path` with the same traversal-safe `_resolve_safe_path` as the read routes; reject names with `/`, `\`, `..`, or a leading dot;
+    - `409` if the file exists (no silent overwrite), `413` above the limit (FE pre-checks 1 MB), write into the per-user workspace only, never the shared mock workspace;
+    - audit-log the upload; uploaded content is untrusted and must still pass `scan_tool_result` when the agent reads it (an upload must not bypass the guard);
+    - the doc 02 §6 table needs the new row.

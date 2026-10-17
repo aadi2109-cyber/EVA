@@ -26,9 +26,19 @@ export const setAuthToken = (token: string | null) => {
 
 export const getAuthToken = () => authToken;
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
-  headers.set('Content-Type', 'application/json');
+  // FormData sets its own multipart boundary; forcing JSON would break uploads.
+  if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (authToken) {
     headers.set('Authorization', `Bearer ${authToken}`);
   }
@@ -46,7 +56,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       // ignore
     }
-    throw new Error(errorJson?.detail || errorJson?.message || `HTTP ${response.status}: ${errorText}`);
+    throw new ApiError(
+      errorJson?.detail || errorJson?.message || `HTTP ${response.status}: ${errorText}`,
+      response.status
+    );
   }
 
   return response.json();
@@ -137,6 +150,15 @@ export const api = {
           modified_at: '',
         }))
         .sort((a, b) => Number(b.is_directory) - Number(a.is_directory) || a.name.localeCompare(b.name));
+    },
+    /** Proposed contract: POST /api/files/upload?path=<dir> (multipart field `file`) -> {path, size}. */
+    upload: async (dir: string, file: File): Promise<{ path: string; size: number }> => {
+      const form = new FormData();
+      form.append('file', file);
+      return request<{ path: string; size: number }>(`/api/files/upload?path=${encodeURIComponent(dir)}`, {
+        method: 'POST',
+        body: form,
+      });
     },
     getContent: async (path: string): Promise<{ content: string; path: string }> => {
       return request<{ content: string; path: string }>(`/api/files/content?path=${encodeURIComponent(path)}`);

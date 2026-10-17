@@ -15,10 +15,11 @@ Contract version: 0.1.0 · Last human merge: H0.75
   - Built all application pages: Task Workspace (`TaskWorkspace.tsx`), Settings & Security Telemetry (`SettingsTrace.tsx`), Connectors (`Connectors.tsx`), Sandboxed Files (`FilesViewer.tsx`), Task History (`History.tsx`), and Admin Enclave (`Admin.tsx`).
   - CP-A/CP-B integration with the real BE (verified headlessly in Chromium against BE + guard service): real login/JWT restore, task create + SSE stream (block-based parser, `Last-Event-ID` reconnect, no reconnect after terminal event), approvals incl. re-approval, `/api/health` polling for the degraded banner, Connectors, Files browser, History with replay of stored events, Admin (guard health, audit explorer, hash-chain verify, kill switches). S1, S2, S4 seen end to end.
   - Admin: config view + four-eyes proposals (proposer sees "waiting", a different admin approves; verified live with two admins) and review queue with decision recording. Admin `Eval` is read-only.
+  - Files page: Upload button (multipart to proposed `POST /api/files/upload`, size/name checks, clear 404/409/413 messages). BE endpoint does not exist yet; see request 11.
   - Mocks kept behind `VITE_USE_MOCK_STREAM=true`.
 - In progress: -
 - Blocked / needs: see `coordination/requests/fe-to-be-live-demo.md` (scripted-provider switch for demos, tool.output field name, plan.step status, approval expiry).
-  - Tooling: `npm test` (Vitest + Testing Library, 35 tests: SSE parser/reconnect, API client, StepList, ToolCallCard, ApprovalModal, mock scenarios), `npm run lint` (ESLint 9, zero warnings, bans `dangerouslySetInnerHTML`, enforces hooks rules), `npm run typecheck`, `npm run test:e2e` (Playwright, 5 smoke tests: login, S1, S4 approval, S7 degraded banner, admin proposal; API stubbed via page.route, no backend needed).
+  - Tooling: `npm test` (Vitest + Testing Library, 43 tests: SSE parser/reconnect, API client, StepList, ToolCallCard, ApprovalModal, mock scenarios), `npm run lint` (ESLint 9, zero warnings, bans `dangerouslySetInnerHTML`, enforces hooks rules), `npm run typecheck`, `npm run test:e2e` (Playwright, 7 smoke tests: login, S1, S4 approval, S7 degraded banner, admin proposal, files upload x2; API stubbed via page.route, no backend needed).
 - Next: S7 live, state polish.
 
 ## BE
