@@ -2,7 +2,7 @@
 Run the REAL AgentDojo benchmark (LLM agent + injection attacks) with EVA's content scanner as the defense.
 
     cd guard && PYTHONPATH=..:. python -m eval.det.agentdojo_live --check
-    cd guard && PYTHONPATH=..:. python -m eval.det.agentdojo_live --smoke --model claude-3-5-sonnet-20241022
+    cd guard && PYTHONPATH=..:. python -m eval.det.agentdojo_live --smoke --provider ollama   (or --model claude-3-5-sonnet-20241022)
     cd guard && PYTHONPATH=..:. python -m eval.det.agentdojo_live --model <model> --suite workspace --defense eva
     ... --defense none        # baseline: same agent, no defense (run both and compare)
 
@@ -35,9 +35,9 @@ from pathlib import Path
 
 HELD_MARKER = "<Content withheld by EVA Guard: held>"
 DEFAULT_VERSION = "v1.2.1"
-KEY_VARS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "COHERE_API_KEY", "TOGETHER_API_KEY")
+KEY_VARS = ("OLLAMA_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY", "COHERE_API_KEY", "TOGETHER_API_KEY")
 PROVIDER_FOR_KEY = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "google": "GOOGLE_API_KEY",
-                    "cohere": "COHERE_API_KEY", "together": "TOGETHER_API_KEY"}
+                    "cohere": "COHERE_API_KEY", "together": "TOGETHER_API_KEY", "ollama": "OLLAMA_API_KEY"}
 
 
 def _require_agentdojo():
@@ -106,12 +106,19 @@ def build_pipeline(model: str, provider: str | None, defense: str, tool_delimite
 
     if llm is not None:  # injected (tests): skip provider/model resolution
         pass
+    elif provider == "ollama":  # same provider as the EVA backend: OpenAI-compatible chat API with tool calling
+        import openai
+        from agentdojo.agent_pipeline.llms.openai_llm import OpenAILLM
+        client = openai.OpenAI(base_url=os.environ.get("OLLAMA_BASE_URL", "https://ollama.com").rstrip("/") + "/v1",
+                               api_key=os.environ["OLLAMA_API_KEY"])
+        llm = OpenAILLM(client, model)
     elif provider is None:
         try:
             provider = MODEL_PROVIDERS[ModelsEnum(model)]
         except ValueError:
             sys.exit(f"Unknown model {model!r}; pass --provider (anthropic|openai|google|cohere|together).")
     llm = llm if llm is not None else get_llm(provider, model, None, tool_delimiter)
+    llm.name = getattr(llm, "name", None) or model
     llm_name = getattr(llm, "name", model)
     eva = make_eva_element(guard) if defense == "eva" else None
     loop = [ToolsExecutor(tool_result_to_str)] + ([eva] if eva else []) + [llm]
@@ -169,7 +176,7 @@ def _fmt(label, a, n):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", help="AgentDojo model enum value (e.g. claude-3-5-sonnet-20241022) or any id with --provider")
-    ap.add_argument("--provider", choices=sorted(PROVIDER_FOR_KEY), help="required only for model ids not in AgentDojo's enum")
+    ap.add_argument("--provider", choices=sorted(PROVIDER_FOR_KEY), help="required for model ids not in AgentDojo's enum; 'ollama' uses OLLAMA_BASE_URL/OLLAMA_API_KEY/OLLAMA_MODEL (same provider as the EVA backend)")
     ap.add_argument("--defense", choices=["eva", "none"], default="eva")
     ap.add_argument("--attack", default="important_instructions")
     ap.add_argument("--suite", action="append", help="repeatable; default all suites")
@@ -187,6 +194,8 @@ def main(argv=None):
     if a.check:
         return preflight(a.provider)
     _require_agentdojo()
+    if a.provider == "ollama" and not a.model:
+        a.model = os.environ.get("OLLAMA_MODEL")
     if not a.model:
         ap.error("--model is required (or use --check)")
     if a.smoke:
