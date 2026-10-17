@@ -27,6 +27,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -125,10 +126,13 @@ def build_pipeline(model: str, provider: str | None, defense: str, tool_delimite
     pipeline = AgentPipeline([SystemMessage(load_system_message(None)), InitQuery(), llm, ToolsExecutionLoop(loop)])
     from agentdojo.models import MODEL_NAMES
     name = str(llm_name)
-    if not any(k in name for k in MODEL_NAMES):
+    known = any(k in name for k in MODEL_NAMES)
+    # The pipeline name becomes a log-directory name: Windows forbids : < > " / \\ | ? * in paths.
+    name = re.sub(r'[<>:"/\\|?*]', "-", name)
+    if not known or not any(k in name for k in MODEL_NAMES):
         # AgentDojo addresses the attacker's text to a model name looked up from the pipeline name;
         # ids outside its enum (newer models) fall back to its generic "Local model".
-        print(f"[note] {name!r} is not in AgentDojo's model list; attacks will address it as 'Local model'.")
+        print(f"[note] {llm_name!r} is not in AgentDojo's model list; attacks will address it as 'Local model'.")
         name += "-local"
     pipeline.name = f"{name}-eva" if eva else name
     return pipeline, eva

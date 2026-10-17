@@ -58,3 +58,13 @@ def test_eva_defense_removes_injection_before_llm_sees_it(tmp_path):
     assert eva.stats["tool_results"] >= 1 and eva.stats["sanitized"] + eva.stats["held"] >= 1
     assert PAYLOAD not in seen.lower()
     assert "[CONTENT SANITISED]" in seen or "withheld" in seen
+
+
+def test_pipeline_name_is_a_valid_windows_path_component(tmp_path):
+    """Model ids like 'gemma4:31b-cloud' must not put ':' (or other illegal chars) in AgentDojo's log path."""
+    class Fake(ScriptedLLM):
+        name = "gemma4:31b-cloud"
+    for defense in ("none", "eva"):
+        pipeline, _ = build_pipeline("x", None, defense, "tool", Guard(db_url=f"sqlite:///{tmp_path}/a.db"), llm=Fake())
+        assert not any(c in pipeline.name for c in '<>:"/\\|?*'), pipeline.name
+        assert "local" in pipeline.name
