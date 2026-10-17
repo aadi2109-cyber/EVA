@@ -17,7 +17,7 @@ from app.agent.orchestrator import TaskOrchestrator, get_active_task_orchestrato
 from app.auth.deps import get_current_user
 from app.auth.security import decode_access_token, fingerprint_access_token
 from app.db.database import get_db_session
-from app.db.models import Message, RevokedToken, Task, TaskEvent, User
+from app.db.models import ApprovalIndex, Message, RevokedToken, Task, TaskEvent, User
 from app.sse.broadcaster import get_task_broadcaster
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -164,6 +164,11 @@ async def cancel_task(
         active_orch.cancel()
 
     task.status = "cancelled"
+    approvals = await session.execute(
+        select(ApprovalIndex).where(ApprovalIndex.task_id == task_id, ApprovalIndex.status == "pending")
+    )
+    for approval in approvals.scalars().all():
+        approval.status = "expired"
     await session.commit()
     return {"status": "cancelled", "task_id": task_id}
 
@@ -172,7 +177,7 @@ async def _sse_user(
     request: Request,
     session: AsyncSession,
 ) -> User:
-    """Authenticate SSE requests from the Authorization header; never accept query tokens."""
+    """Authenticate SSE only from the Authorization header; never accept query tokens."""
     token = None
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
@@ -216,9 +221,13 @@ async def stream_task_events(
     if last_event_id_header is not None:
         try:
             last_id = int(last_event_id_header)
+            if last_id < 0:
+                raise ValueError
         except ValueError:
-            pass
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Last-Event-ID")
     if last_id is None and last_event_id_query is not None:
+        if last_event_id_query < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid last_event_id")
         last_id = last_event_id_query
 
     broadcaster = await get_task_broadcaster(task_id)

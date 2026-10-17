@@ -174,6 +174,26 @@ async def test_denied_approval_never_runs(async_client, guard_http, script):
     assert "tool.started" not in [e.event_type for e in await events(tid)]
 
 
+async def test_cancel_mid_approval_expires_approval_and_never_runs(async_client, guard_http, script):
+    h = await login(async_client)
+    sent_before = len(mock_state.sent_messages)
+    tid = await start_send_task(async_client, h, script)
+    approval = (await wait_for(tid, "approval.required")).payload_json["approval"]
+
+    cancelled = await async_client.post(f"/api/tasks/{tid}/cancel", headers=h)
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    terminal = await wait_for(tid, TERMINAL)
+    assert terminal.event_type == "task.cancelled"
+    assert len(mock_state.sent_messages) == sent_before
+    assert "tool.started" not in [e.event_type for e in await events(tid)]
+
+    late = await async_client.post(
+        f"/api/approvals/{approval['approval_id']}", json={"approved": True}, headers=h
+    )
+    assert late.status_code == 409
+    assert len(mock_state.sent_messages) == sent_before
+
+
 async def test_runs_only_if_recheck_allows(async_client, script):
     set_guard_client(RecheckDenyingClient(base_url="http://guard.test", token="dev-guard-token",
                                           transport=httpx.ASGITransport(app=guard_app)))
@@ -343,7 +363,8 @@ async def test_sse_last_event_id_replay_and_access(async_client, guard_http, scr
 # ---------------------------------------------------------------- admin proxy
 
 @pytest.fixture
-def admin_proxy():
+def admin_proxy(monkeypatch):
+    monkeypatch.setattr(settings, "GUARD_TRANSPORT", "http")
     admin_api.set_admin_transport(httpx.ASGITransport(app=guard_app))
     yield
     admin_api.set_admin_transport(None)
@@ -377,8 +398,18 @@ async def test_admin_proxy_guard_unreachable_is_502(async_client):
         async def handle_async_request(self, request):
             raise httpx.ConnectError("down")
 
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(settings, "GUARD_TRANSPORT", "http")
     admin_api.set_admin_transport(Down())
     try:
         assert (await async_client.get("/api/admin/health", headers=await login(async_client, "admin"))).status_code == 502
     finally:
         admin_api.set_admin_transport(None)
+        monkeypatch.undo()
+
+
+async def test_admin_proxy_refuses_inprocess_mode(async_client, monkeypatch):
+    monkeypatch.setattr(settings, "GUARD_TRANSPORT", "inprocess")
+    response = await async_client.get("/api/admin/health", headers=await login(async_client, "admin"))
+    assert response.status_code == 503
+    assert response.json()["detail"].startswith("Guard admin API requires GUARD_TRANSPORT=http")

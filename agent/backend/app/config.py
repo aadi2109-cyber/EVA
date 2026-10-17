@@ -6,23 +6,27 @@ Enforces hard security invariants at boot time.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Literal
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+_ENV_DIR = Path(__file__).resolve().parents[3] / "env"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        # Load committed defaults first and local overrides last when started from
-        # agent/backend, matching the documented env/.env configuration path.
-        env_file=("../../env/.env.example", "../../env/.env", "../.env", ".env"),
+        # Later files override earlier ones; real process env vars override all files.
+        # Resolved from this file, not the CWD: defaults < env/.env (git-ignored secrets) < ./.env.
+        env_file=(str(_ENV_DIR / ".env.example"), str(_ENV_DIR / ".env"), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     APP_ENV: Literal["dev", "eval", "prod"] = "dev"
     JWT_SECRET: str = ""
-    FRONTEND_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    FRONTEND_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175"
     DATABASE_URL: str = "sqlite+aiosqlite:///./agent.db"
     WORKSPACE_ROOT: str = "./workspace"
 
@@ -41,9 +45,17 @@ class Settings(BaseSettings):
     MINIMOTH_API_KEY: str = ""
     MINIMOTH_BASE_URL: str = "https://api.minimoth.dev"
 
+    TELEGRAM_MODE: Literal["real", "mock"] = "mock"
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ALLOWLIST: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+
     OLLAMA_BASE_URL: str = "https://ollama.com"
     OLLAMA_API_KEY: str = ""
-    OLLAMA_MODEL: str = "llama3.1"
+    OLLAMA_MODEL: str = "gpt-oss:20b"
+
+    # web.search backend: "mock" (default; always used in eval) or "ollama" (Ollama web-search API)
+    WEB_SEARCH_PROVIDER: Literal["mock", "ollama"] = "mock"
 
     GUARD_TRANSPORT: Literal["inprocess", "http"] = "inprocess"
     GUARD_SERVICE_URL: str = "http://localhost:8100"
@@ -93,11 +105,19 @@ class Settings(BaseSettings):
                 f"They are only permitted when APP_ENV='eval'."
             )
 
-        # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock
+        if self.APP_ENV == "eval" and self.WEB_SEARCH_PROVIDER != "mock":
+            raise ValueError("WEB_SEARCH_PROVIDER must be 'mock' when APP_ENV='eval' (mock web only).")
+
+        # Hard Rule 2: Security tests/evals run only with GMAIL_MODE=mock and TELEGRAM_MODE=mock
         if self.APP_ENV == "eval" and self.GMAIL_MODE == "real":
             raise ValueError(
                 "Security eval environment (APP_ENV=eval) cannot run with GMAIL_MODE=real. "
                 "Must be set to GMAIL_MODE=mock."
+            )
+        if self.APP_ENV == "eval" and self.TELEGRAM_MODE == "real":
+            raise ValueError(
+                "Security eval environment (APP_ENV=eval) cannot run with TELEGRAM_MODE=real. "
+                "Must be set to TELEGRAM_MODE=mock."
             )
 
         return self

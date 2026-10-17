@@ -30,6 +30,7 @@ class SourceType(str, Enum):
     FILE = "file"
     WEB = "web"
     MESSAGE = "message"
+    TELEGRAM = "telegram"
     TOOL_OUTPUT = "tool_output"
 
 

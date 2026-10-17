@@ -16,11 +16,28 @@ from httpx import ASGITransport, AsyncClient
 # Set APP_ENV=dev for testing
 os.environ["APP_ENV"] = "dev"
 os.environ["GUARD_TRANSPORT"] = "inprocess"
+# Pin external-service modes so a developer's env/.env (real Gmail/Ollama keys) never leaks into tests.
+os.environ["GMAIL_MODE"] = "mock"
+os.environ["TELEGRAM_MODE"] = "mock"
+os.environ["WEB_SEARCH_PROVIDER"] = "mock"
+os.environ["OLLAMA_API_KEY"] = ""
+os.environ["GOOGLE_CLIENT_ID"] = ""
+os.environ["GOOGLE_CLIENT_SECRET"] = ""
+os.environ["GMAIL_SEND_ALLOWLIST"] = ""
+os.environ["TELEGRAM_BOT_TOKEN"] = ""
+os.environ["TELEGRAM_ALLOWLIST"] = ""
+os.environ["SEED_ADMIN_EMAIL"] = "admin@eva.local"
+os.environ["SEED_ADMIN_PASSWORD"] = "AdminPassword123!"
+os.environ["SEED_USER_EMAIL"] = "user@eva.local"
+os.environ["SEED_USER_PASSWORD"] = "UserPassword123!"
+os.environ["GUARD_SERVICE_TOKEN"] = "dev-guard-token"
 os.environ["JWT_SECRET"] = "test-only-random-looking-secret-for-eva-auth-tests-2026"
+os.environ["TOKEN_ENC_KEY"] = "dGhpc2lzYTMyeS1ieXRlcy1mZXJuZXQta2V5LTEyMzQ1Njc="
 # Per-process database so concurrent pytest runs never share (and corrupt) one SQLite file.
-_TEST_DB_DIR = tempfile.mkdtemp(prefix="eva-test-db-")
+_TEST_DB_DIR = Path(tempfile.mkdtemp(prefix="eva-test-db-")).resolve()
 atexit.register(shutil.rmtree, _TEST_DB_DIR, ignore_errors=True)
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DB_DIR}/test_agent.db"
+# Use SQLAlchemy's forward-slash SQLite URL form on Windows as well.
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{(_TEST_DB_DIR / 'test_agent.db').as_posix()}"
 
 # Ensure imports resolve
 ROOT_DIR = Path(__file__).parent.parent.parent.parent

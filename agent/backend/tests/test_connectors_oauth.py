@@ -152,3 +152,21 @@ def test_prod_requires_valid_fernet_key(monkeypatch):
         encrypt_token("t")
     monkeypatch.setattr(settings, "TOKEN_ENC_KEY", Fernet.generate_key().decode())
     assert decrypt_token(encrypt_token("t")) == "t"
+
+
+def test_oauth_state_errors_say_which_problem():
+    import time
+    import jwt
+    import pytest
+    from app.config import settings
+    from app.connectors.gmail_oauth import OAuthError, make_oauth_state, verify_oauth_state
+
+    assert verify_oauth_state(make_oauth_state("u1")) == "u1"
+    expired = jwt.encode({"sub": "u1", "purpose": "gmail_oauth", "iat": 1, "exp": int(time.time()) - 5}, settings.JWT_SECRET, algorithm="HS256")
+    with pytest.raises(OAuthError, match="older than 10 minutes"):
+        verify_oauth_state(expired)
+    foreign = jwt.encode({"sub": "u1", "purpose": "gmail_oauth", "exp": int(time.time()) + 600}, "some-other-secret-key-32-characters!!", algorithm="HS256")
+    with pytest.raises(OAuthError, match="JWT_SECRET"):
+        verify_oauth_state(foreign)
+    with pytest.raises(OAuthError):
+        verify_oauth_state("not-a-token")

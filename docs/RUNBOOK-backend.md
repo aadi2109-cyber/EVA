@@ -14,15 +14,32 @@ uvicorn app.main:app --reload --port 8000
 curl localhost:8000/api/health
 ```
 
-Docker (default service is the `api` only, guard imported in-process):
+**Python version:** supported range is 3.11+. Code must stay valid on 3.11 (no f-strings that reuse their own quote; `tests/test_py311_compat.py` enforces it when the suite runs on 3.12+).
+
+### Windows (PowerShell)
+```powershell
+cd agent\backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1          # if blocked: Set-ExecutionPolicy -Scope Process Bypass
+pip install -e ".[dev]"
+$env:PYTHONPATH = ".;..\..;..\..\contracts;..\..\guard"   # per window; ';' separator
+Copy-Item ..\..\env\.env.example ..\..\env\.env          # then edit
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+curl.exe localhost:8000/api/health         # PowerShell's `curl` is an alias; use curl.exe
+```
+`Posture degraded: Tier-2 detector unavailable` banner / `/api/health` shows `tier2_available:false`: `onnxruntime` (and `numpy`) are not installed in the venv (the Tier-2 loader swallows the ImportError and the guard goes fail-closed, side-effect tools disabled). Fix: `git pull`, then `pip install -e ".[dev]"` again, then restart uvicorn.
+
+`ModuleNotFoundError: greenlet` means an old install (before `greenlet` was a declared dependency): `git pull`, then `pip install -e ".[dev]"` again.
+
+Docker (API and the separately running HTTP guard):
 
 ```bash
-docker compose -f env/docker-compose.yml up --build            # api on :8000
-docker compose -f env/docker-compose.yml --profile http --profile ui up --build   # + guard :8100, ui :5173
+docker compose -f env/docker-compose.yml up --build            # api :8000 + guard :8100
+docker compose -f env/docker-compose.yml --profile ui up --build   # + ui :5173
 ```
 
-The `guard` and `ui` profiles need `guard/Dockerfile` and `agent/frontend/Dockerfile` (owned by SEC / FE).
-The image runs `alembic upgrade head` on start; DB and per-user workspaces live in the `eva-data` volume (`/data`).
+The guard image requires `guard/Dockerfile` from SEC-2 (requested in `coordination/requests/backend-to-sec2-01.md`); UI still requires `agent/frontend/Dockerfile` from FE. Compose forces `GUARD_TRANSPORT=http`, so task checks and `/api/admin/*` share the same guard service process and state. The API image runs `alembic upgrade head` on start; DB and per-user workspaces live in the `eva-data` volume (`/data`). Guard SQLite state lives in `guard-data`.
 Config: `env/.env.example` (committed defaults) layered under `env/.env` (git-ignored; put real keys there).
 
 `JWT_SECRET` must be set in `env/.env` to a random value of at least 32 bytes; the example file contains only a rejected placeholder. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Keep the value stable across backend workers so existing tokens and signed Gmail OAuth state continue to validate.
@@ -92,6 +109,17 @@ Email/web HTML becomes text via `app/tools/htmltext.py`: visible text first, the
 off-screen). Nothing hidden is dropped, so the guard scanner sees it. `<script>`/`<style>` bodies are omitted.
 `web.search` is simulated (fixed example.com results); there is no search backend.
 
+- **Check the Ollama key/model/search:** `python -m app.eval.check_live` (never prints the key). It tests that *chat* is authorised, that the model emits a tool call on its own, and that web search answers. Note `GET /api/tags` returns 200 with no key at all (public listing), so it is NOT a key check. 401 on chat = key rejected (create a new one); 404 = wrong model name (use `gpt-oss:20b`).
+
+### Where configuration comes from
+The backend loads, lowest to highest priority: `env/.env.example` (defaults) < `env/.env` (git-ignored secrets) < `./.env` < real process environment variables. The **guard service reads only its process environment** (e.g. `GUARD_SERVICE_TOKEN`), not `env/.env`: start it with the same values, e.g. `set -a; . env/.env; set +a; uvicorn service.main:app --port 8100` from `guard/`. A token mismatch between the two shows up as 401/502 from `/api/health` and `/api/admin/*`. Docker compose layers `env/.env` for both services.
+
+### Web, search and model provider notes
+- **web.fetch SSRF:** every non-mock host is DNS-resolved on every redirect hop; all returned addresses must be public (loopback, private, link-local, CGNAT, metadata, IPv4-mapped IPv6 and odd numeric forms like `2130706433` are refused), then the connection is pinned to the checked IP (Host header and TLS SNI preserved) so DNS rebinding can't swap the target. Unresolvable hosts are refused.
+- **web.search:** `WEB_SEARCH_PROVIDER=mock` (default, always used in eval) or `ollama` (Ollama web-search API, `OLLAMA_API_KEY`). Queries are capped at 256 chars; results are capped, scheme-filtered and treated as untrusted. The search *query* is an egress channel the gateway does not currently police: see `coordination/requests/BE-to-SEC2-01.md`.
+- **Ollama model provider:** an HTTP error, error chunk, timeout (180 s total) or empty stream ends the task as `failed` ("Model unavailable"); provider error text is never fed back to the model. Verified live on 2026-10-16 against ollama.com (streaming text, tool calls, `/api/web_search`). Model names on the direct cloud API have no provider prefix and no `-cloud` suffix (e.g. `gpt-oss:20b`, not `openai/gpt-oss:20b`): list yours with `curl -H "Authorization: Bearer $OLLAMA_API_KEY" https://ollama.com/api/tags`.
+- **Gmail real mode caps:** text parts 256 KB each, 512 KB per message, MIME depth 12, 200 parts; truncation is written into the body so it is visible to the scanner. A transient Google/token-endpoint outage does NOT flag the account; a rejected refresh token or a still-401 fresh token does (`status=reconnect_needed`).
+
 ## 6. Gmail setup (real mode)
 
 Human prerequisites (once), per `docs/03` section 3: dedicated Gmail account; Google Cloud project with Gmail API enabled;
@@ -137,4 +165,16 @@ Never run security tests or evals with `GMAIL_MODE=real`.
 | `web.fetch` "not reachable in eval mode" | expected in eval; use `http://localhost:8000/mock/web/<page>.html` |
 | `web.fetch` "Non-public address" / "Port N is not allowed" | SSRF policy; only public hosts on 80/443 |
 | API reset does not clear a running server | export the same `MOCK_STATE_FILE` for server and CLI (section 3) |
-| `docker compose up` fails on `guard`/`ui` | those profiles lack Dockerfiles in-repo; run the default `api` service only |
+| `docker compose up` fails building `guard` | `guard/Dockerfile` is SEC-2-owned and requested; local Compose cannot start until that file lands |
+| `docker compose --profile ui up` fails building `ui` | `agent/frontend/Dockerfile` is FE-owned and not part of the backend request |
+| `/api/admin/*` returns 503 | Admin routes need the HTTP guard facade. Set `GUARD_TRANSPORT=http` and point `GUARD_SERVICE_URL` at the same service used by the API. In-process mode has no public admin facade and cannot safely apply kill switches/config through this proxy. |
+| Guard health shows down in HTTP mode | Check `GUARD_SERVICE_URL`, matching `GUARD_SERVICE_TOKEN`, and that `service.main:app` is running. HTTP health timeouts/malformed bodies fail closed and are reported as guard errors. |
+| A task is held immediately after API restart | Expected recovery behavior: running tasks are not replayed because model/side-effect state is not transactionally resumable. Pending approvals are expired and a `task.held` SSE event with reason `backend_restart` is persisted. Start a new task after inspecting any already completed side effects. |
+| SSE client disconnects | Reconnect to the same task endpoint with the last received SSE `id` in `Last-Event-ID`; the API replays persisted events with larger sequence numbers. |
+| `pytest` sees duplicate email / SQLite locks | Run from a private working directory. `tests/conftest.py` allocates a separate temporary database per pytest process; do not manually set a shared `DATABASE_URL`. |
+
+## 8. CP-C verification notes
+
+Run backend tests from a private directory as described in section 2. To exercise the real HTTP transport, start `uvicorn service.main:app --host 127.0.0.1 --port 8100` from `guard/` with the same `GUARD_SERVICE_TOKEN` as the API, then run `S1`, `S2`, `S4`, `S7`, and `S12` with `GUARD_TRANSPORT=http`. Scenario counts and environment limits belong in the handoff; Docker build status must be reported separately when Docker is unavailable.
+
+Validation on 2026-10-16: Docker CLI and `uv` are not installed on this host. Dependencies were installed into a disposable scratch virtualenv. `pytest --collect-only` collected 135 cases, but the first pytest fixture and an independent async SQLite `init_db()` smoke check stalled on database connection before any test body ran. The API/guard processes and S1/S2/S4/S7/S12 were therefore not run; no passing-test count is claimed. Seven new backend test cases were added for contract routes/errors/SSE disconnect-resume, restart recovery, approval cancellation, in-process admin refusal, and concurrent HTTP-guard tasks. `python -m compileall` and `git diff --check` passed.

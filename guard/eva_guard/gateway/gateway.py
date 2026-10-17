@@ -7,6 +7,8 @@ Owner: SEC-2 (Authority-side Security)
 from __future__ import annotations
 
 import fnmatch
+import re
+import posixpath
 import hashlib
 import json
 import logging
@@ -44,6 +46,9 @@ TOOL_REGISTRY = {
     "web.fetch": {"required": ["url"], "read_only": True},
     "messages.history": {"required": [], "read_only": True},
     "messages.send": {"required": ["channel", "text"], "read_only": False},
+    "telegram.read": {"required": ["chat_id"], "read_only": True},
+    "telegram.history": {"required": ["chat_id"], "read_only": True},
+    "telegram.send": {"required": ["chat_id", "text"], "read_only": False},
 }
 
 DESTINATION_ARG_MAP = {
@@ -52,6 +57,8 @@ DESTINATION_ARG_MAP = {
     "web.fetch": "url",
     "files.read": "path",
     "files.write": "path",
+    "messages.send": "channel",
+    "telegram.send": "chat_id",
 }
 
 
@@ -75,6 +82,19 @@ def normalize_destination(dest: str) -> str:
         path = parsed.path
         return f"{scheme}://{netloc}{path}"
     return dest.lower()
+
+
+SANDBOX_TOKEN = "workspace:*"
+PATH_TOOLS_PREFIX = "files."
+
+
+def is_sandbox_path(path: str) -> bool:
+    """Relative, non-traversing path (the BE resolves it inside the sandbox workspace)."""
+    p = str(path).replace("\\", "/").strip()
+    if not p or p.startswith(("/", "~")) or re.match(r"^[a-zA-Z]:", p) or "\x00" in p or "://" in p:
+        return False
+    norm = posixpath.normpath(p)
+    return not (norm == ".." or norm.startswith("../"))
 
 
 def destination_matches(dest: str, pattern: str) -> bool:
@@ -181,15 +201,24 @@ class PolicyGateway:
         # ------------------------------------------------------------------
         # Rule 6: Destination args within allowed_destinations
         # ------------------------------------------------------------------
+        untrusted_dest = False
         dest_field = DESTINATION_ARG_MAP.get(req.tool)
         dest_val = req.args.get(dest_field) if dest_field else None
         if dest_val and policy:
             allowed = False
-            for pat in policy.allowed_destinations:
-                if destination_matches(str(dest_val), pat):
-                    allowed = True
-                    break
-            if not allowed:
+            if req.tool.startswith(PATH_TOOLS_PREFIX):
+                # File paths: sandbox sentinel + traversal check (no glob matching on raw paths)
+                allowed = SANDBOX_TOKEN in policy.allowed_destinations and is_sandbox_path(str(dest_val))
+            else:
+                for pat in policy.allowed_destinations:
+                    if pat != SANDBOX_TOKEN and destination_matches(str(dest_val), pat):
+                        allowed = True
+                        break
+            if not allowed and req.tool == "gmail.draft":
+                # A draft sends nothing: an out-of-policy recipient (e.g. a reply to a sender)
+                # goes to a human with the exact recipient shown, rather than a hard DENY.
+                untrusted_dest = True
+            elif not allowed:
                 reasons.append(ReasonCode.DESTINATION_NOT_ALLOWED)
 
         # ------------------------------------------------------------------
@@ -197,7 +226,6 @@ class PolicyGateway:
         # A destination/recipient/URL arg whose provenance is UNTRUSTED and was not
         # typed by the user -> DENY if outside policy's destinations, otherwise REQUIRE_APPROVAL
         # ------------------------------------------------------------------
-        untrusted_dest = False
         if dest_field and dest_val:
             prov = req.arg_provenance.get(dest_field)
             if prov and prov.trust == Trust.UNTRUSTED:

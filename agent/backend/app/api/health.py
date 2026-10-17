@@ -6,8 +6,10 @@ from __future__ import annotations
 
 from typing import Any
 from fastapi import APIRouter
+from sqlalchemy import text
 
 from app.config import settings
+from app.db.database import async_session_factory
 from app.guard_client.factory import get_guard_client
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -15,6 +17,15 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 
 @router.get("")
 async def health_check() -> dict[str, Any]:
+    try:
+        async with async_session_factory() as session:
+            await session.execute(text("SELECT 1"))
+        backend_status = "ok"
+        backend_error = None
+    except Exception as e:
+        backend_status = "down"
+        backend_error = str(e)
+
     guard = get_guard_client()
     try:
         guard_health = await guard.health()
@@ -31,12 +42,16 @@ async def health_check() -> dict[str, Any]:
         }
 
     backend_data = {
-        "status": "ok",
+        "status": backend_status,
         "app_env": settings.APP_ENV,
         "guard_transport": settings.GUARD_TRANSPORT,
         "gmail_mode": settings.GMAIL_MODE,
         "guard_profile": settings.GUARD_PROFILE,
+        # which guard is really behind the client: eva_guard.api.Guard (real), http:<url>, or unavailable
+        "guard_impl": getattr(guard, "implementation", type(guard).__name__),
     }
+    if backend_error:
+        backend_data["error"] = backend_error
 
     return {
         "backend": backend_data,

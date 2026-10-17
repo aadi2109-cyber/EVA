@@ -52,9 +52,12 @@ STANDARD_TOOLS = {
     "web.fetch": True,
     "messages.history": True,
     "messages.send": False,
+    "telegram.read": True,
+    "telegram.history": True,
+    "telegram.send": False,
 }
 
-ALWAYS_APPROVAL_REQUIRED = {"gmail.send", "messages.send", "files.write", "gmail.draft"}
+ALWAYS_APPROVAL_REQUIRED = {"gmail.send", "messages.send", "telegram.send", "files.write", "gmail.draft"}
 
 
 def _canonical_json(data: Any) -> str:

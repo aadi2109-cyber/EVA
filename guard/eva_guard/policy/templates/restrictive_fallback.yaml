@@ -13,6 +13,7 @@ prohibited_side_effects:
   - gmail.draft
   - files.write
   - messages.send
+  - telegram.send
   - web.fetch
 approval_required_for: []
 minimum_detector_posture: tier1_ok_readonly

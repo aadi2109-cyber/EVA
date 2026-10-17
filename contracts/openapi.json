@@ -1359,6 +1359,7 @@
           "file",
           "web",
           "message",
+          "telegram",
           "tool_output"
         ],
         "title": "SourceType"

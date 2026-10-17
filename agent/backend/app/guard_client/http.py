@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 class HttpGuardClient:
     """Interacts with the EVA Guard standalone HTTP service."""
 
+    @property
+    def implementation(self) -> str:
+        return f"http:{self.base_url}"
+
     def __init__(
         self,
         base_url: str | None = None,
@@ -124,9 +128,20 @@ class HttpGuardClient:
         try:
             async with self._client(3.0) as client:
                 resp = await client.get(url, headers=self.headers)
-            if resp.status_code != 200:
-                raise GuardError(f"Guard health returned HTTP {resp.status_code}")
-            return Health.model_validate(resp.json())
+        except httpx.TimeoutException as e:
+            raise GuardError(f"Guard health request timed out: {e}") from e
+        except (httpx.ConnectError, httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError) as e:
+            raise GuardDownError(f"Guard health endpoint unreachable: {e}") from e
         except Exception as e:
             logger.error("Guard health check failed: %s", e)
-            raise GuardDownError(f"Guard health endpoint unreachable: {e}") from e
+            raise GuardError(f"Guard health request failed: {e}") from e
+
+        if resp.status_code != 200:
+            raise GuardError(f"Guard health returned HTTP {resp.status_code}")
+        try:
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                raise ValueError("expected a JSON object")
+            return Health.model_validate(payload)
+        except Exception as e:
+            raise GuardError(f"Guard returned malformed health response: {e}") from e

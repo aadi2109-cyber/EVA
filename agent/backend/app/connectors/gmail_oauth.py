@@ -82,6 +82,16 @@ def make_oauth_state(user_id: str) -> str:
 def verify_oauth_state(state: str) -> str:
     try:
         payload = jwt.decode(state, settings.JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError as e:
+        raise OAuthError(
+            "Invalid or expired OAuth state: the link is older than 10 minutes. "
+            "Start again with GET /api/connectors/gmail/auth-url and approve within 10 minutes."
+        ) from e
+    except jwt.InvalidSignatureError as e:
+        raise OAuthError(
+            "Invalid or expired OAuth state: signature does not match this backend's JWT_SECRET "
+            "(the connect link came from another server, or JWT_SECRET changed after it was created)."
+        ) from e
     except jwt.PyJWTError as e:
         raise OAuthError("Invalid or expired OAuth state") from e
     if payload.get("purpose") != "gmail_oauth" or not payload.get("sub"):
@@ -200,16 +210,20 @@ async def get_access_token(user_id: str, session: AsyncSession | None = None) ->
         await mark_reconnect_needed(session, acc, "stored token unreadable")
         raise ReconnectNeeded() from None
 
-    async with google_client() as client:
-        resp = await client.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                "refresh_token": refresh,
-                "grant_type": "refresh_token",
-            },
-        )
+    try:
+        async with google_client() as client:
+            resp = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "refresh_token": refresh,
+                    "grant_type": "refresh_token",
+                },
+            )
+    except httpx.HTTPError as e:
+        # Transient network failure: NOT a revoked grant, so the account is not flagged.
+        raise RuntimeError(f"Google token endpoint unreachable ({type(e).__name__})") from e
     if resp.status_code in (400, 401):
         await mark_reconnect_needed(session, acc, "Google rejected the refresh token")
         raise ReconnectNeeded()

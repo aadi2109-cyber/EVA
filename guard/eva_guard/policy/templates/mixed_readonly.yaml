@@ -9,6 +9,8 @@ allowed_operations:
   - web.search
   - web.fetch
   - messages.history
+  - telegram.read
+  - telegram.history
 allowed_data_scope: []
 allowed_destinations:
   - "https://*"
@@ -19,6 +21,7 @@ prohibited_side_effects:
   - gmail.draft
   - files.write
   - messages.send
+  - telegram.send
 approval_required_for: []
 minimum_detector_posture: tier1_ok_readonly
 failure_mode: fail_closed

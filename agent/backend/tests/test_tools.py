@@ -110,3 +110,6 @@ def test_registry_read_only_invariants():
     assert tool_registry.is_read_only("gmail.send") is False
     assert tool_registry.is_read_only("gmail.draft") is False
     assert tool_registry.is_read_only("messages.send") is False
+    assert tool_registry.is_read_only("telegram.read") is True
+    assert tool_registry.is_read_only("telegram.history") is True
+    assert tool_registry.is_read_only("telegram.send") is False
