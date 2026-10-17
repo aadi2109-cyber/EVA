@@ -14,7 +14,7 @@ from eva_guard.det.provenance import validate_and_normalize_provenance, is_high_
 from eva_guard.det.splitter import split_sentences, SentenceSpan
 from eva_guard.det.t1 import scan_t1
 from eva_guard.det.t2 import Tier2Scorer, create_t2_scorer, Score
-from eva_guard.det.t3 import Tier3Provider, T3Result
+from eva_guard.det.t3 import Tier3Provider, T3Result, create_t3_provider, LayaProvider
 from eva_guard.det.sanitizer import sanitize_text, SANITIZED_MARKER
 
 try:
@@ -59,7 +59,7 @@ class DetPipeline:
     ) -> None:
         self.config = config or DetConfig()
         self.audit = audit
-        self.t3 = t3
+        self.t3 = t3 if t3 is not None else (create_t3_provider(self.config) if self.config.t3_enabled else None)
         self.t2 = t2_scorer or create_t2_scorer(self.config)
 
         # Telemetry metrics

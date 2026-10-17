@@ -74,11 +74,11 @@ class LayaProvider:
             self._router = laya.Router()
             self._loaded = True
         except ImportError:
-            # LAYA library not installed; fallback provider
-            self._available = False
+            # LAYA library not installed; fallback to conservative evaluator
+            self._router = None
             self._loaded = True
         except Exception:
-            self._available = False
+            self._router = None
             self._loaded = True
 
     async def judge(
@@ -180,10 +180,22 @@ class MockTier3Provider:
         return self.judge_sync(sentence, context, provenance)
 
 
-def create_t3_provider(config: DetConfig | None = None) -> Tier3Provider | None:
-    """Default T3 provider for the Guard facade: LAYA, unless disabled (EVA_T3_ENABLED=0 or config)."""
+def create_t3_provider(config: DetConfig | None = None, use_mock: bool = False) -> Tier3Provider | None:
+    """Default T3 provider for the Guard facade / DetPipeline: LAYA, unless disabled (EVA_T3_ENABLED=0 or config)."""
     import os
-    config = config or DetConfig()
-    if not config.t3_enabled or os.environ.get("EVA_T3_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
+    cfg = config or DetConfig()
+    if not cfg.t3_enabled or os.environ.get("EVA_T3_ENABLED", "1").strip().lower() in ("0", "false", "no", "off"):
         return None
-    return LayaProvider(config)
+    if use_mock:
+        return MockTier3Provider()
+    return LayaProvider(cfg)
+
+
+__all__ = [
+    "T3VerdictType",
+    "T3Result",
+    "Tier3Provider",
+    "LayaProvider",
+    "MockTier3Provider",
+    "create_t3_provider",
+]

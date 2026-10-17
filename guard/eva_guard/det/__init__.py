@@ -9,7 +9,7 @@ from eva_guard.det.provenance import validate_and_normalize_provenance, is_high_
 from eva_guard.det.splitter import split_sentences, SentenceSpan
 from eva_guard.det.t1 import scan_t1, T1Result
 from eva_guard.det.t2 import Tier2Scorer, Score, InterimTier2Scorer, OnnxTier2Scorer, create_t2_scorer
-from eva_guard.det.t3 import Tier3Provider, T3Result, LayaProvider, MockTier3Provider
+from eva_guard.det.t3 import Tier3Provider, T3Result, LayaProvider, MockTier3Provider, create_t3_provider
 from eva_guard.det.sanitizer import sanitize_text, SANITIZED_MARKER
 
 __all__ = [
@@ -32,6 +32,7 @@ __all__ = [
     "T3Result",
     "LayaProvider",
     "MockTier3Provider",
+    "create_t3_provider",
     "sanitize_text",
     "SANITIZED_MARKER",
 ]
